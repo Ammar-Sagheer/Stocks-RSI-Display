@@ -32,18 +32,26 @@ if needed.
 - `lib/psx.js` — fetches symbols and EOD series, with retries for the
   occasional transient connection reset/503 this feed produces under load.
 - `lib/rsi.js` — Wilder's RSI(14) calculation and day-offset snapshotting.
-- `lib/cache.js` — an in-memory cache that fetches all symbols with limited
-  concurrency (8 at a time) so the unofficial feed isn't hammered. Every
-  fetch (including the initial cold cache and later 15-minute-TTL refreshes)
-  merges records in one symbol at a time rather than swapping in one big
-  batch at the end, so `getStockData()` never blocks the caller — it always
+- `lib/refresh.js` — `fetchAllStocks()`, the shared logic that fetches every
+  symbol with limited concurrency and retries transient failures once after
+  a cool-down instead of silently dropping them. Used by both backends
+  below via progress callbacks, so neither has to duplicate this logic.
+- `lib/cache.js` — the in-memory backend (Render/Railway/local dev): calls
+  `fetchAllStocks()` and merges records into a module-level cache one
+  symbol at a time, so `getStockData()` never blocks the caller — it always
   returns whatever's currently loaded, plus `loadedCount`/`totalCount` so
-  the frontend can show progress and poll faster until it's done. Symbols
-  that fail transiently (connection reset/503 under load) are queued and
-  retried once, after an 8s cool-down, instead of being silently dropped
-  for the rest of the 15-minute cycle; whatever's still unavailable after
-  that retry is reported as `failedSymbols` and surfaced in the UI.
-- `app/api/stocks/route.js` — returns the cached data as JSON.
+  the frontend can show progress and poll faster until it's done. Needs a
+  long-lived server process to work (see deployment notes below).
+- `lib/store.js` — the Redis backend (Vercel): thin wrapper around Upstash
+  Redis for reading/writing one JSON snapshot of the full stock list.
+  Auto-disables itself (`isRedisConfigured === false`) when the Upstash env
+  vars aren't set.
+- `app/api/cron/refresh/route.js` — Vercel Cron-triggered route that runs
+  `fetchAllStocks()` once and writes the result to Redis via `lib/store.js`.
+  No-ops with a clear error if Redis isn't configured.
+- `app/api/stocks/route.js` — returns the cached data as JSON. Reads from
+  Redis if configured (bootstrapping it inline on the very first request if
+  empty), otherwise falls back to `lib/cache.js`'s in-memory store.
 - `app/page.js` + `app/components/` — client-side table, sorting, pagination,
   search, and responsive table/card layout. Polls `/api/stocks` every 2s
   while `loadedCount < totalCount` (showing a "loading X of Y" progress bar),
@@ -119,10 +127,10 @@ or a different provider (see below).
 
 Railway also runs the app as a persistent container (via Nixpacks, using the
 included `railway.json`), so the in-memory cache behaves the same way as on
-Render — no serverless cold starts. Its free tier is a small monthly usage
-credit rather than Render's always-available-but-sleeps model, so as long as
-you're within that credit the service stays warm and doesn't spin down
-between requests.
+Render — no serverless cold starts, in principle. **Note:** unlike Render,
+Railway requires a payment method on file to actually allocate compute —
+without one, deploys just sit "Queued" indefinitely. So this isn't a genuinely
+free option; only use it if you're fine attaching billing.
 
 1. In the Railway dashboard: **New Project** → **Deploy from GitHub repo** →
    select this repo and the **`main`** branch.
@@ -135,3 +143,54 @@ between requests.
    see repeated `UND_ERR_SOCKET`/connection-reset errors immediately, this
    provider's IPs are blocked too and it's worth trying yet another region or
    provider.
+
+## Deploying on Vercel
+
+Vercel runs API routes as serverless functions — there's no persistent
+process for `lib/cache.js`'s in-memory cache to live in, and multiple
+function instances don't share memory, so the Render/Railway approach
+doesn't work here unmodified. Instead, on Vercel the app uses:
+
+- **Upstash Redis** (via Vercel's Storage integration) as a shared, external
+  cache the stock data is written to.
+- **Vercel Cron** (`vercel.json`, `app/api/cron/refresh/route.js`) to
+  populate that cache on a schedule, instead of fetching on each request.
+- `/api/stocks` (`app/api/stocks/route.js`) just reads the last snapshot
+  from Redis — fast and consistent across every function instance. If
+  Redis has never been populated yet (first deploy, before any cron run),
+  it does one inline fetch to bootstrap itself, then persists it.
+
+This is auto-detected: if `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`
+env vars are present, the Redis path is used; otherwise the app falls back
+to the in-memory behavior described above (so the same codebase still works
+unmodified on Render/Railway/local dev).
+
+Setup:
+
+1. **Import the project** into Vercel from this GitHub repo (`main` branch).
+   No custom build/start commands needed — Vercel's Next.js support handles
+   it automatically.
+2. **Add Upstash Redis**: in the Vercel project → **Storage** tab → **Create
+   Database** → **Upstash for Redis** (free tier). Connecting it to the
+   project automatically injects `UPSTASH_REDIS_REST_URL` and
+   `UPSTASH_REDIS_REST_TOKEN` as environment variables.
+3. **Add a `CRON_SECRET` env var** (any random string you generate) in
+   Project Settings → Environment Variables. Vercel automatically sends it
+   as a `Bearer` token on cron-triggered requests, which the refresh route
+   checks to reject anyone else calling it directly.
+4. Redeploy so the new env vars take effect. `vercel.json` schedules the
+   refresh for `30 12 * * *` (12:30 UTC, shortly after PSX's market close) —
+   **note that Vercel's Hobby (free) plan only actually executes cron jobs
+   once per day**, regardless of the schedule expression; more frequent
+   schedules need a paid plan.
+5. The first visit before any cron run has completed will trigger the
+   inline bootstrap fetch (up to the 60s function limit) — if it doesn't
+   finish in time on Hobby, that request errors and the next visitor
+   retries the same bootstrap, until either it completes or the daily cron
+   does. You can also hit `/api/cron/refresh` manually right after setup
+   (with `Authorization: Bearer <your CRON_SECRET>`) to populate it
+   immediately instead of waiting.
+
+This hasn't been verified against a live Vercel + Upstash deployment from
+this environment — if the bootstrap or cron run errors, check the Vercel
+function logs for `[refresh]`/`[psx]` lines the same way we debugged Render.
