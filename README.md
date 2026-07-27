@@ -160,10 +160,15 @@ doesn't work here unmodified. Instead, on Vercel the app uses:
   Redis has never been populated yet (first deploy, before any cron run),
   it does one inline fetch to bootstrap itself, then persists it.
 
-This is auto-detected: if `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`
-env vars are present, the Redis path is used; otherwise the app falls back
-to the in-memory behavior described above (so the same codebase still works
-unmodified on Render/Railway/local dev).
+This is auto-detected: if Redis credentials are present (either
+`UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`, or the
+`KV_REST_API_URL`/`KV_REST_API_TOKEN` names Vercel's Upstash Marketplace
+integration actually injects), the Redis path is used; otherwise the app
+falls back to the in-memory behavior described above (so the same codebase
+still works unmodified on Render/Railway/local dev). The `/api/stocks`
+response includes a `backend: "redis" | "memory"` field, and the UI shows a
+warning label when it's still on the in-memory fallback, so it's obvious if
+this hasn't kicked in yet.
 
 Setup:
 
@@ -171,9 +176,9 @@ Setup:
    No custom build/start commands needed — Vercel's Next.js support handles
    it automatically.
 2. **Add Upstash Redis**: in the Vercel project → **Storage** tab → **Create
-   Database** → **Upstash for Redis** (free tier). Connecting it to the
-   project automatically injects `UPSTASH_REDIS_REST_URL` and
-   `UPSTASH_REDIS_REST_TOKEN` as environment variables.
+   Database** → **Upstash for Redis** (free tier). During creation, connect
+   it to this project — that's what actually injects the credentials as
+   environment variables (as `KV_REST_API_URL`/`KV_REST_API_TOKEN`).
 3. **Add a `CRON_SECRET` env var** (any random string you generate) in
    Project Settings → Environment Variables. Vercel automatically sends it
    as a `Bearer` token on cron-triggered requests, which the refresh route
