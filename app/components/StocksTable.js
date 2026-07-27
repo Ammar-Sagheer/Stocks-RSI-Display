@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
-import RSIChart from "./RSIChart";
+import TradingViewChart from "./TradingViewChart";
 import { RSI_SNAPSHOT_OFFSETS } from "@/lib/rsi";
 
 const RSI_COLUMNS = RSI_SNAPSHOT_OFFSETS.map((o) => ({
@@ -103,9 +103,9 @@ export default function StocksTable({
                   <tr className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
                     <td colSpan={COLUMN_COUNT} className="px-4 py-3">
                       <p className="text-xs text-zinc-500 mb-1">
-                        {stock.sector} — RSI(14) trend for {stock.symbol}
+                        {stock.sector} — {stock.symbol} on TradingView
                       </p>
-                      <RSIChart history={stock.history} />
+                      <TradingViewChart symbol={stock.symbol} height={500} />
                     </td>
                   </tr>
                 )}
@@ -157,7 +157,7 @@ export default function StocksTable({
             </div>
             {expandedSymbol === stock.symbol && (
               <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 px-3 py-2">
-                <RSIChart history={stock.history} />
+                <TradingViewChart symbol={stock.symbol} height={380} />
               </div>
             )}
           </div>
