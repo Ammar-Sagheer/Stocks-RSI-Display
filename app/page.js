@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import StocksTable from "./components/StocksTable";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
@@ -14,6 +14,10 @@ export default function Home() {
   const [loadedCount, setLoadedCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [failedSymbols, setFailedSymbols] = useState(0);
+  const [scope, setScope] = useState("core");
+  const [hasMore, setHasMore] = useState(false);
+  const [restTotal, setRestTotal] = useState(0);
+  const [usingFallback, setUsingFallback] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
@@ -23,9 +27,14 @@ export default function Home() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [expandedSymbol, setExpandedSymbol] = useState(null);
 
+  // Read by the polling loop (whose closure is fixed on first render), so
+  // clicking "Load more" switches every subsequent poll to the full scope.
+  const wantAllRef = useRef(false);
+
   async function load() {
     try {
-      const res = await fetch("/api/stocks");
+      const url = wantAllRef.current ? "/api/stocks?scope=all" : "/api/stocks";
+      const res = await fetch(url);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load data");
       setStocks(json.stocks);
@@ -33,6 +42,10 @@ export default function Home() {
       setLoadedCount(json.loadedCount);
       setTotalCount(json.totalCount);
       setFailedSymbols(json.failedSymbols);
+      setScope(json.scope);
+      setHasMore(json.hasMore);
+      setRestTotal(json.restTotal);
+      setUsingFallback(json.usingFallback);
       setError(null);
       return json;
     } catch (err) {
@@ -62,6 +75,12 @@ export default function Home() {
       clearTimeout(timer);
     };
   }, []);
+
+  function handleLoadMore() {
+    wantAllRef.current = true;
+    setHasMore(false); // hide the button immediately; server confirms on next poll
+    load();
+  }
 
   function handleSort(key) {
     if (key === sortKey) {
@@ -108,6 +127,9 @@ export default function Home() {
   const stillFilling = totalCount === 0 || loadedCount < totalCount;
   const fillPercent = totalCount > 0 ? Math.round((loadedCount / totalCount) * 100) : 0;
 
+  const scopeLabel =
+    scope === "all" ? "all PSX stocks" : usingFallback ? "top stocks" : "KSE-100 stocks";
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black px-3 py-4 sm:px-6 sm:py-6">
       <div className="mx-auto w-full max-w-screen-xl">
@@ -116,8 +138,9 @@ export default function Home() {
             PSX Stocks RSI Dashboard
           </h1>
           <p className="text-xs sm:text-sm text-zinc-500 mt-1">
-            RSI(14) for all Pakistan Stock Exchange equities, snapshotted now
-            and 1, 3, 7, 15 and 30 trading days ago. Data source: PSX free
+            RSI(14) for Pakistan Stock Exchange equities, snapshotted now and 1,
+            3, 7, 15 and 30 trading days ago. Loads the KSE-100 index first —
+            use “Load more” for every other listed stock. Data source: PSX free
             end-of-day feed.
           </p>
         </header>
@@ -157,7 +180,7 @@ export default function Home() {
               <span>
                 {totalCount === 0
                   ? "Fetching PSX symbol list…"
-                  : `Loading stocks in the background — ${loadedCount} of ${totalCount} (${fillPercent}%)`}
+                  : `Loading ${scopeLabel} in the background — ${loadedCount} of ${totalCount} (${fillPercent}%)`}
               </span>
             </div>
             <div className="h-1.5 w-full rounded-full bg-blue-100 dark:bg-blue-900 overflow-hidden">
@@ -190,9 +213,21 @@ export default function Home() {
           />
         )}
 
+        {hasMore && (
+          <div className="mt-3 flex justify-center">
+            <button
+              onClick={handleLoadMore}
+              className="rounded-md border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+            >
+              Load all other PSX stocks ({restTotal} more)
+            </button>
+          </div>
+        )}
+
         <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs sm:text-sm text-zinc-500">
           <span>
-            {sorted.length} stocks — page {currentPage} of {totalPages}
+            {sorted.length} stocks ({scope === "all" ? "all PSX" : usingFallback ? "top 100" : "KSE-100"})
+            {" — "}page {currentPage} of {totalPages}
             {!stillFilling && failedSymbols > 0 && (
               <span className="text-amber-600 dark:text-amber-500">
                 {" "}

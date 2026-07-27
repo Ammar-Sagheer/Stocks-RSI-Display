@@ -1,12 +1,15 @@
 # PSX Stocks RSI Dashboard
 
 A simple Next.js dashboard listing Pakistan Stock Exchange (PSX) equities with
-their RSI(14), snapshotted now and 1, 3, 7, 15 and 30 trading days ago. Click a
-row to expand an RSI trend chart (Recharts, built from our own EOD data) for
-that stock, plus a link to open the symbol on tradingview.com. Click a column
-header to sort. Results are paginated (rows-per-page selector) and searchable
-by symbol/name. Layout is responsive: a fixed-width table on desktop/tablet
-with no horizontal scrolling, and stacked cards on mobile.
+their RSI(14), snapshotted now and 1, 3, 7, 15 and 30 trading days ago. It
+loads the **KSE-100 index stocks first** (the ~100 most significant companies)
+so the meaningful data appears fast without hammering PSX with all ~750
+requests at once; a **"Load more"** button then fetches every other listed
+stock on demand. Click a row to expand an RSI trend chart (Recharts, built
+from our own EOD data), plus a link to open the symbol on tradingview.com.
+Click a column header to sort. Results are paginated (rows-per-page selector)
+and searchable by symbol/name. Layout is responsive: a fixed-width table on
+desktop/tablet with no horizontal scrolling, and stacked cards on mobile.
 
 ## Data source
 
@@ -29,25 +32,30 @@ if needed.
 
 ## Architecture
 
-- `lib/psx.js` — fetches symbols and EOD series, with retries for the
-  occasional transient connection reset/503 this feed produces under load.
+- `lib/psx.js` — fetches symbols and EOD series (with retries for the
+  occasional transient connection reset/503 this feed produces under load),
+  plus `fetchKse100Symbols()`, which parses the market-watch page's "LISTED
+  IN" column to find the ~100 KSE-100 index members.
 - `lib/rsi.js` — Wilder's RSI(14) calculation and day-offset snapshotting.
-- `lib/cache.js` — an in-memory cache that fetches all symbols with limited
-  concurrency (4 at a time) so the unofficial feed isn't hammered, merging
-  records into a module-level store one symbol at a time so `getStockData()`
-  never blocks the caller — it always returns whatever's currently loaded,
-  plus `loadedCount`/`totalCount` so the frontend can show progress and poll
-  faster until it's done. Symbols that fail transiently (connection
-  reset/503 under load) are queued and retried once, after an 8s cool-down,
-  instead of being silently dropped for the rest of the 15-minute cycle;
-  whatever's still unavailable after that retry is reported as
-  `failedSymbols` and surfaced in the UI. Because this lives in the server
-  process's memory, it needs a long-lived server (see deployment below).
-- `app/api/stocks/route.js` — returns the cached data as JSON.
+- `lib/cache.js` — a two-phase in-memory cache. On first request it fetches
+  the equity list + KSE-100 membership, splits equities into **core**
+  (KSE-100) and **rest** (everything else), and fetches the core's RSI first.
+  The rest is only fetched once the user clicks "Load more" (the API is
+  called with `?scope=all`). Both phases fetch with limited concurrency (4 at
+  a time) so the unofficial feed isn't hammered, merge records in one symbol
+  at a time so `getStockData()` never blocks, and retry symbols that fail
+  transiently once after a 10s cool-down. If the KSE-100 set can't be
+  identified (market-watch unavailable), it falls back to using the first 100
+  symbols as core so the app still works. The response carries
+  `loadedCount`/`totalCount` (for the active scope), `hasMore`, `restTotal`,
+  `scope`, and `usingFallback`. Because it lives in the server process's
+  memory, it needs a long-lived server (see deployment below).
+- `app/api/stocks/route.js` — returns the cached data as JSON; `?scope=all`
+  triggers loading the non-KSE-100 stocks too.
 - `app/page.js` + `app/components/` — client-side table, sorting, pagination,
-  search, and responsive table/card layout. Polls `/api/stocks` every 2s
-  while `loadedCount < totalCount` (showing a "loading X of Y" progress bar),
-  then falls back to a 5-minute idle poll once the cache is fully warm.
+  search, responsive table/card layout, and the "Load more" button. Polls
+  `/api/stocks` every 2s while the active scope is still filling (showing a
+  "loading X of Y" progress bar), then falls back to a 5-minute idle poll.
 - `app/components/RSIChart.js` — Recharts line chart of RSI(14) over time,
   built from the `history` we already computed server-side. TradingView's
   free embeddable widget was tried instead, but its public datafeed only
