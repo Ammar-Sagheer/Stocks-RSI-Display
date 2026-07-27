@@ -29,15 +29,18 @@ if needed.
 - `lib/psx.js` — fetches symbols and EOD series, with retries for the
   occasional transient connection reset/503 this feed produces under load.
 - `lib/rsi.js` — Wilder's RSI(14) calculation and day-offset snapshotting.
-- `lib/cache.js` — an in-memory, stale-while-revalidate cache (15 min TTL)
-  that fetches all symbols with limited concurrency (8 at a time) so the
-  unofficial feed isn't hammered. The first request after the server starts
-  has to build this cache cold, which can take 30–90 seconds for ~700+
-  symbols; subsequent requests are served instantly from cache while a
-  refresh happens in the background once stale.
+- `lib/cache.js` — an in-memory cache that fetches all symbols with limited
+  concurrency (8 at a time) so the unofficial feed isn't hammered. Every
+  fetch (including the initial cold cache and later 15-minute-TTL refreshes)
+  merges records in one symbol at a time rather than swapping in one big
+  batch at the end, so `getStockData()` never blocks the caller — it always
+  returns whatever's currently loaded, plus `loadedCount`/`totalCount` so
+  the frontend can show progress and poll faster until it's done.
 - `app/api/stocks/route.js` — returns the cached data as JSON.
 - `app/page.js` + `app/components/` — client-side table, sorting, pagination,
-  search, and responsive table/card layout.
+  search, and responsive table/card layout. Polls `/api/stocks` every 2s
+  while `loadedCount < totalCount` (showing a "loading X of Y" progress bar),
+  then falls back to a 5-minute idle poll once the cache is fully warm.
 - `app/components/TradingViewChart.js` — embeds TradingView's free Advanced
   Chart widget (`PSX:{symbol}`, daily interval, RSI study preloaded) so the
   expanded row shows a live TradingView chart rather than a chart built from
@@ -56,8 +59,12 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Deployment notes
 
-- The cold-cache fetch (~30–90s) can exceed default serverless function
-  timeouts on platforms like Vercel. For production use, consider either:
+- `/api/stocks` itself always returns immediately — it never blocks on the
+  full ~700-symbol fetch. But the in-memory cache lives in the server
+  process, so on a platform that spins up a fresh serverless instance per
+  request (rather than keeping one warm), each cold instance restarts the
+  fetch from zero and visitors never see it finish filling in. For
+  production use, prefer either:
   - Running on a long-lived Node server (VPS, Docker, etc.) where the
     in-memory cache persists across requests, or
   - Pre-warming the cache with a scheduled job (e.g. Vercel Cron hitting

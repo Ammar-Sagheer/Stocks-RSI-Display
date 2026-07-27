@@ -5,11 +5,14 @@ import StocksTable from "./components/StocksTable";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const DEFAULT_PAGE_SIZE = 25;
-const POLL_INTERVAL_MS = 5 * 60 * 1000;
+const IDLE_POLL_MS = 5 * 60 * 1000;
+const LOADING_POLL_MS = 2000;
 
 export default function Home() {
   const [stocks, setStocks] = useState([]);
   const [updatedAt, setUpdatedAt] = useState(null);
+  const [loadedCount, setLoadedCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
@@ -26,9 +29,13 @@ export default function Home() {
       if (!res.ok) throw new Error(json.error || "Failed to load data");
       setStocks(json.stocks);
       setUpdatedAt(json.updatedAt);
+      setLoadedCount(json.loadedCount);
+      setTotalCount(json.totalCount);
       setError(null);
+      return json;
     } catch (err) {
       setError(err.message);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -36,16 +43,21 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
+    let timer;
 
-    async function run() {
-      if (!cancelled) await load();
+    async function tick() {
+      if (cancelled) return;
+      const result = await load();
+      if (cancelled) return;
+      const stillFilling =
+        !result || result.totalCount === 0 || result.loadedCount < result.totalCount;
+      timer = setTimeout(tick, stillFilling ? LOADING_POLL_MS : IDLE_POLL_MS);
     }
 
-    run();
-    const interval = setInterval(run, POLL_INTERVAL_MS);
+    tick();
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      clearTimeout(timer);
     };
   }, []);
 
@@ -91,6 +103,9 @@ export default function Home() {
     currentPage * pageSize
   );
 
+  const stillFilling = totalCount === 0 || loadedCount < totalCount;
+  const fillPercent = totalCount > 0 ? Math.round((loadedCount / totalCount) * 100) : 0;
+
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-black px-3 py-4 sm:px-6 sm:py-6">
       <div className="mx-auto w-full max-w-screen-xl">
@@ -117,8 +132,7 @@ export default function Home() {
             className="w-full sm:w-64 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
           />
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-zinc-500">
-            {loading && <span>Loading — first load can take up to a minute…</span>}
-            {!loading && updatedAt && (
+            {updatedAt && (
               <span className="whitespace-nowrap">
                 Updated {new Date(updatedAt).toLocaleString()}
               </span>
@@ -135,22 +149,44 @@ export default function Home() {
           </div>
         </div>
 
+        {stillFilling && (
+          <div className="mb-3 rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/50 px-3 py-2">
+            <div className="flex items-center justify-between text-xs sm:text-sm text-blue-800 dark:text-blue-300 mb-1.5">
+              <span>
+                {totalCount === 0
+                  ? "Fetching PSX symbol list…"
+                  : `Loading stocks in the background — ${loadedCount} of ${totalCount} (${fillPercent}%)`}
+              </span>
+            </div>
+            <div className="h-1.5 w-full rounded-full bg-blue-100 dark:bg-blue-900 overflow-hidden">
+              <div
+                className="h-full bg-blue-500 transition-all duration-500"
+                style={{ width: `${totalCount === 0 ? 5 : fillPercent}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         {error && (
           <p className="mb-4 rounded-md bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300">
             {error}
           </p>
         )}
 
-        <StocksTable
-          stocks={pageItems}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSort={handleSort}
-          expandedSymbol={expandedSymbol}
-          onToggleExpand={(symbol) =>
-            setExpandedSymbol((cur) => (cur === symbol ? null : symbol))
-          }
-        />
+        {loading ? (
+          <p className="text-sm text-zinc-500 py-6 text-center">Loading…</p>
+        ) : (
+          <StocksTable
+            stocks={pageItems}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={handleSort}
+            expandedSymbol={expandedSymbol}
+            onToggleExpand={(symbol) =>
+              setExpandedSymbol((cur) => (cur === symbol ? null : symbol))
+            }
+          />
+        )}
 
         <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs sm:text-sm text-zinc-500">
           <span>
