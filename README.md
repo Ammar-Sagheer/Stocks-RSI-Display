@@ -78,29 +78,28 @@ Open [http://localhost:3000](http://localhost:3000).
   this under normal usage, but if you see repeated 503s, wait a few minutes
   before retrying.
 
-## Deploying on Render
+## Deploying on Render (manual, free tier)
 
-This app is built around a persistent in-memory cache, so it needs a
-long-lived server rather than a cold-starting serverless function —
-Render's Web Services fit that directly. A `render.yaml` blueprint is
-included:
+This app is built around a persistent in-memory cache, so it normally wants
+a long-lived server rather than a cold-starting serverless function. Render's
+**Free** web services do spin down after ~15 minutes of inactivity — the next
+visit after a spin-down cold-starts the service, wiping the cache and
+re-triggering the ~30–90s "loading stocks in the background" fill you see on
+first boot. That's a reasonable trade-off for free hosting of a personal
+project; just expect that behavior instead of an always-warm cache.
 
-1. Push this repo to GitHub (already done if you're reading this from the
-   repo).
-2. In the Render dashboard: **New +** → **Blueprint** → connect this repo.
-   Render will read `render.yaml` and configure the service automatically
-   (build command, start command, Node version).
-3. **Important:** the blueprint requests the **Starter** plan, not Free.
-   Render's Free web services spin down after 15 minutes of inactivity —
-   the next request cold-starts a fresh instance, wiping the in-memory
-   cache and forcing a full ~700-symbol refetch (and repeated cold starts
-   are exactly what triggers PSX's rate-limiting). Starter (or higher)
-   keeps the instance running continuously, so the cache actually stays
-   warm.
-4. Deploy. First boot will show the "loading stocks in the background"
-   progress bar for ~30–90 seconds while the cache fills, same as running
-   locally.
+Manual setup (no blueprint):
 
-If you'd rather set it up by hand instead of via the blueprint: Environment
-= Node, Build Command = `npm install && npm run build`, Start Command =
-`npm run start`, no environment variables required.
+1. In the Render dashboard: **New +** → **Web Service**.
+2. Connect this GitHub repo and pick the **`main`** branch.
+3. **Environment**: Node.
+4. **Build Command**: `npm install && npm run build`
+5. **Start Command**: `npm run start`
+6. **Instance Type**: **Free**.
+7. Leave environment variables empty — none are required.
+8. Click **Create Web Service**. Render builds and deploys automatically on
+   every push to `main` from here on.
+
+A `render.yaml` (set to the free plan) is also included in the repo if you'd
+rather use Render's **Blueprint** flow (**New +** → **Blueprint**) instead of
+filling in the form by hand — it fills in the same settings automatically.
