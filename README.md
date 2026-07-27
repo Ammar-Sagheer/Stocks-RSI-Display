@@ -33,7 +33,7 @@ if needed.
   occasional transient connection reset/503 this feed produces under load.
 - `lib/rsi.js` — Wilder's RSI(14) calculation and day-offset snapshotting.
 - `lib/cache.js` — an in-memory cache that fetches all symbols with limited
-  concurrency (8 at a time) so the unofficial feed isn't hammered, merging
+  concurrency (4 at a time) so the unofficial feed isn't hammered, merging
   records into a module-level store one symbol at a time so `getStockData()`
   never blocks the caller — it always returns whatever's currently loaded,
   plus `loadedCount`/`totalCount` so the frontend can show progress and poll
