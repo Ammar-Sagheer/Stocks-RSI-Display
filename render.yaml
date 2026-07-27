@@ -3,7 +3,10 @@ services:
     name: psx-rsi-dashboard
     runtime: node
     plan: free
-    region: singapore
+    # NOTE: PSX's feed (dps.psx.com.pk) blocks Render's Singapore IP range
+    # (connections reset with UND_ERR_SOCKET). Frankfurt works. Do not switch
+    # this back to singapore even though it's geographically closest to PSX.
+    region: frankfurt
     branch: main
     buildCommand: npm install && npm run build
     startCommand: npm run start

@@ -14,7 +14,6 @@ export default function Home() {
   const [loadedCount, setLoadedCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [failedSymbols, setFailedSymbols] = useState(0);
-  const [backend, setBackend] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
@@ -34,7 +33,6 @@ export default function Home() {
       setLoadedCount(json.loadedCount);
       setTotalCount(json.totalCount);
       setFailedSymbols(json.failedSymbols);
-      setBackend(json.backend);
       setError(null);
       return json;
     } catch (err) {
@@ -139,14 +137,6 @@ export default function Home() {
             {updatedAt && (
               <span className="whitespace-nowrap">
                 Updated {new Date(updatedAt).toLocaleString()}
-              </span>
-            )}
-            {backend === "memory" && (
-              <span
-                className="whitespace-nowrap text-amber-600 dark:text-amber-500"
-                title="No shared cache (Redis) is configured — each server instance keeps its own cache in memory, which doesn't work reliably on serverless hosts like Vercel."
-              >
-                (in-memory cache — no Redis configured)
               </span>
             )}
             <button

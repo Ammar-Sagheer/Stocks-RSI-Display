@@ -32,26 +32,18 @@ if needed.
 - `lib/psx.js` — fetches symbols and EOD series, with retries for the
   occasional transient connection reset/503 this feed produces under load.
 - `lib/rsi.js` — Wilder's RSI(14) calculation and day-offset snapshotting.
-- `lib/refresh.js` — `fetchAllStocks()`, the shared logic that fetches every
-  symbol with limited concurrency and retries transient failures once after
-  a cool-down instead of silently dropping them. Used by both backends
-  below via progress callbacks, so neither has to duplicate this logic.
-- `lib/cache.js` — the in-memory backend (Render/Railway/local dev): calls
-  `fetchAllStocks()` and merges records into a module-level cache one
-  symbol at a time, so `getStockData()` never blocks the caller — it always
-  returns whatever's currently loaded, plus `loadedCount`/`totalCount` so
-  the frontend can show progress and poll faster until it's done. Needs a
-  long-lived server process to work (see deployment notes below).
-- `lib/store.js` — the Redis backend (Vercel): thin wrapper around Upstash
-  Redis for reading/writing one JSON snapshot of the full stock list.
-  Auto-disables itself (`isRedisConfigured === false`) when the Upstash env
-  vars aren't set.
-- `app/api/cron/refresh/route.js` — Vercel Cron-triggered route that runs
-  `fetchAllStocks()` once and writes the result to Redis via `lib/store.js`.
-  No-ops with a clear error if Redis isn't configured.
-- `app/api/stocks/route.js` — returns the cached data as JSON. Reads from
-  Redis if configured (bootstrapping it inline on the very first request if
-  empty), otherwise falls back to `lib/cache.js`'s in-memory store.
+- `lib/cache.js` — an in-memory cache that fetches all symbols with limited
+  concurrency (8 at a time) so the unofficial feed isn't hammered, merging
+  records into a module-level store one symbol at a time so `getStockData()`
+  never blocks the caller — it always returns whatever's currently loaded,
+  plus `loadedCount`/`totalCount` so the frontend can show progress and poll
+  faster until it's done. Symbols that fail transiently (connection
+  reset/503 under load) are queued and retried once, after an 8s cool-down,
+  instead of being silently dropped for the rest of the 15-minute cycle;
+  whatever's still unavailable after that retry is reported as
+  `failedSymbols` and surfaced in the UI. Because this lives in the server
+  process's memory, it needs a long-lived server (see deployment below).
+- `app/api/stocks/route.js` — returns the cached data as JSON.
 - `app/page.js` + `app/components/` — client-side table, sorting, pagination,
   search, and responsive table/card layout. Polls `/api/stocks` every 2s
   while `loadedCount < totalCount` (showing a "loading X of Y" progress bar),
@@ -73,129 +65,47 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Deployment notes
+## Deploying on Render (free tier)
 
-- `/api/stocks` itself always returns immediately — it never blocks on the
-  full ~700-symbol fetch. But the in-memory cache lives in the server
-  process, so on a platform that spins up a fresh serverless instance per
-  request (rather than keeping one warm), each cold instance restarts the
-  fetch from zero and visitors never see it finish filling in. For
-  production use, prefer either:
-  - Running on a long-lived Node server (VPS, Docker, etc.) where the
-    in-memory cache persists across requests, or
-  - Pre-warming the cache with a scheduled job (e.g. Vercel Cron hitting
-    `/api/stocks` every 10–15 minutes) so user requests always hit warm data.
-- The unofficial PSX feed can rate-limit an IP that sends many concurrent
-  requests in a short window. The built-in cache/backoff is tuned to avoid
-  this under normal usage, but if you see repeated 503s, wait a few minutes
-  before retrying.
+This app keeps its cache in the server process's memory, so it needs a
+long-lived server — **not** a per-request serverless function (that's why
+Vercel/Netlify don't fit without an external store). Render's Web Services
+are a persistent container, which is exactly right.
 
-## Deploying on Render (manual, free tier)
+**Pick the region carefully — this is the one thing that trips people up.**
+PSX's feed (`dps.psx.com.pk`) is in Pakistan, so Singapore looks like the
+obvious closest choice — but PSX **blocks Render's Singapore IP range**
+outright (connections reset with `UND_ERR_SOCKET` and the app hangs forever
+on "Fetching PSX symbol list…"). **Use Frankfurt** — it's the closest region
+to Pakistan that PSX does *not* block, and latency doesn't matter much anyway
+since the fetch is a one-time-per-refresh batch that gets cached. If Frankfurt
+ever starts getting blocked too, a US region (Oregon/Ohio/Virginia) is the
+next thing to try. Do **not** use Singapore.
 
-This app is built around a persistent in-memory cache, so it normally wants
-a long-lived server rather than a cold-starting serverless function. Render's
-**Free** web services do spin down after ~15 minutes of inactivity — the next
-visit after a spin-down cold-starts the service, wiping the cache and
-re-triggering the ~30–90s "loading stocks in the background" fill you see on
-first boot. That's a reasonable trade-off for free hosting of a personal
-project; just expect that behavior instead of an always-warm cache.
-
-Manual setup (no blueprint):
+Manual setup:
 
 1. In the Render dashboard: **New +** → **Web Service**.
 2. Connect this GitHub repo and pick the **`main`** branch.
-3. **Environment**: Node.
-4. **Build Command**: `npm install && npm run build`
-5. **Start Command**: `npm run start`
-6. **Instance Type**: **Free**.
-7. Leave environment variables empty — none are required.
-8. Click **Create Web Service**. Render builds and deploys automatically on
-   every push to `main` from here on.
+3. **Region**: **Frankfurt (EU Central)** — see the warning above.
+4. **Environment**: Node.
+5. **Build Command**: `npm install && npm run build`
+6. **Start Command**: `npm run start`
+7. **Instance Type**: **Free**.
+8. Leave environment variables empty — none are required.
+9. Click **Create Web Service**.
 
-A `render.yaml` (set to the free plan) is also included in the repo if you'd
-rather use Render's **Blueprint** flow (**New +** → **Blueprint**) instead of
-filling in the form by hand — it fills in the same settings automatically.
+A `render.yaml` (free plan, Frankfurt region) is also included if you'd rather
+use Render's **Blueprint** flow (**New +** → **Blueprint**) instead of filling
+in the form by hand.
 
-**Known issue:** PSX's feed (`dps.psx.com.pk`) appears to block some cloud
-providers' IP ranges outright (connections get reset at the socket level —
-see `[psx]`/`[cache]` log lines with `UND_ERR_SOCKET` if this happens to you).
-If the app gets permanently stuck on "Fetching PSX symbol list…", that's a
-network-level block on the host's IP, not a code bug — try a different region
-or a different provider (see below).
+**Free-tier note:** Render's free web services spin down after ~15 minutes of
+inactivity. The next visit after a spin-down cold-starts the service, wiping
+the in-memory cache and re-triggering the ~30–90s "loading stocks in the
+background" fill you see on first boot. That's the trade-off for free hosting;
+the first page or two of stocks still appear within ~10–15s while the rest
+loads behind the progress bar.
 
-## Deploying on Railway
-
-Railway also runs the app as a persistent container (via Nixpacks, using the
-included `railway.json`), so the in-memory cache behaves the same way as on
-Render — no serverless cold starts, in principle. **Note:** unlike Render,
-Railway requires a payment method on file to actually allocate compute —
-without one, deploys just sit "Queued" indefinitely. So this isn't a genuinely
-free option; only use it if you're fine attaching billing.
-
-1. In the Railway dashboard: **New Project** → **Deploy from GitHub repo** →
-   select this repo and the **`main`** branch.
-2. Railway auto-detects the Node app via `railway.json` (build:
-   `npm install && npm run build`, start: `npm run start`). No environment
-   variables are required.
-3. Deploy. Check the **Deployments → Logs** tab the same way as Render — look
-   for `[psx]`/`[cache]` lines. If PSX's feed is reachable from Railway's IP
-   range, you'll see the symbol list load and the stock count climb; if you
-   see repeated `UND_ERR_SOCKET`/connection-reset errors immediately, this
-   provider's IPs are blocked too and it's worth trying yet another region or
-   provider.
-
-## Deploying on Vercel
-
-Vercel runs API routes as serverless functions — there's no persistent
-process for `lib/cache.js`'s in-memory cache to live in, and multiple
-function instances don't share memory, so the Render/Railway approach
-doesn't work here unmodified. Instead, on Vercel the app uses:
-
-- **Upstash Redis** (via Vercel's Storage integration) as a shared, external
-  cache the stock data is written to.
-- **Vercel Cron** (`vercel.json`, `app/api/cron/refresh/route.js`) to
-  populate that cache on a schedule, instead of fetching on each request.
-- `/api/stocks` (`app/api/stocks/route.js`) just reads the last snapshot
-  from Redis — fast and consistent across every function instance. If
-  Redis has never been populated yet (first deploy, before any cron run),
-  it does one inline fetch to bootstrap itself, then persists it.
-
-This is auto-detected: if Redis credentials are present (either
-`UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`, or the
-`KV_REST_API_URL`/`KV_REST_API_TOKEN` names Vercel's Upstash Marketplace
-integration actually injects), the Redis path is used; otherwise the app
-falls back to the in-memory behavior described above (so the same codebase
-still works unmodified on Render/Railway/local dev). The `/api/stocks`
-response includes a `backend: "redis" | "memory"` field, and the UI shows a
-warning label when it's still on the in-memory fallback, so it's obvious if
-this hasn't kicked in yet.
-
-Setup:
-
-1. **Import the project** into Vercel from this GitHub repo (`main` branch).
-   No custom build/start commands needed — Vercel's Next.js support handles
-   it automatically.
-2. **Add Upstash Redis**: in the Vercel project → **Storage** tab → **Create
-   Database** → **Upstash for Redis** (free tier). During creation, connect
-   it to this project — that's what actually injects the credentials as
-   environment variables (as `KV_REST_API_URL`/`KV_REST_API_TOKEN`).
-3. **Add a `CRON_SECRET` env var** (any random string you generate) in
-   Project Settings → Environment Variables. Vercel automatically sends it
-   as a `Bearer` token on cron-triggered requests, which the refresh route
-   checks to reject anyone else calling it directly.
-4. Redeploy so the new env vars take effect. `vercel.json` schedules the
-   refresh for `30 12 * * *` (12:30 UTC, shortly after PSX's market close) —
-   **note that Vercel's Hobby (free) plan only actually executes cron jobs
-   once per day**, regardless of the schedule expression; more frequent
-   schedules need a paid plan.
-5. The first visit before any cron run has completed will trigger the
-   inline bootstrap fetch (up to the 60s function limit) — if it doesn't
-   finish in time on Hobby, that request errors and the next visitor
-   retries the same bootstrap, until either it completes or the daily cron
-   does. You can also hit `/api/cron/refresh` manually right after setup
-   (with `Authorization: Bearer <your CRON_SECRET>`) to populate it
-   immediately instead of waiting.
-
-This hasn't been verified against a live Vercel + Upstash deployment from
-this environment — if the bootstrap or cron run errors, check the Vercel
-function logs for `[refresh]`/`[psx]` lines the same way we debugged Render.
+**Diagnosing feed issues:** if the app hangs on "Fetching PSX symbol list…",
+check the Render **Logs** tab for `[psx]`/`[cache]` lines. `UND_ERR_SOCKET` /
+`other side closed` means PSX is blocking that region's IP (change region);
+other errors point at a genuine transient feed problem.
