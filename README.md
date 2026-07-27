@@ -77,3 +77,30 @@ Open [http://localhost:3000](http://localhost:3000).
   requests in a short window. The built-in cache/backoff is tuned to avoid
   this under normal usage, but if you see repeated 503s, wait a few minutes
   before retrying.
+
+## Deploying on Render
+
+This app is built around a persistent in-memory cache, so it needs a
+long-lived server rather than a cold-starting serverless function —
+Render's Web Services fit that directly. A `render.yaml` blueprint is
+included:
+
+1. Push this repo to GitHub (already done if you're reading this from the
+   repo).
+2. In the Render dashboard: **New +** → **Blueprint** → connect this repo.
+   Render will read `render.yaml` and configure the service automatically
+   (build command, start command, Node version).
+3. **Important:** the blueprint requests the **Starter** plan, not Free.
+   Render's Free web services spin down after 15 minutes of inactivity —
+   the next request cold-starts a fresh instance, wiping the in-memory
+   cache and forcing a full ~700-symbol refetch (and repeated cold starts
+   are exactly what triggers PSX's rate-limiting). Starter (or higher)
+   keeps the instance running continuously, so the cache actually stays
+   warm.
+4. Deploy. First boot will show the "loading stocks in the background"
+   progress bar for ~30–90 seconds while the cache fills, same as running
+   locally.
+
+If you'd rather set it up by hand instead of via the blueprint: Environment
+= Node, Build Command = `npm install && npm run build`, Start Command =
+`npm run start`, no environment variables required.
