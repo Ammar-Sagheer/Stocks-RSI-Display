@@ -56,30 +56,36 @@ export default function Home() {
     }
   }
 
+  const timerRef = useRef(null);
+  const pollCancelledRef = useRef(false);
+
+  async function runPoll() {
+    if (pollCancelledRef.current) return;
+    const result = await load();
+    if (pollCancelledRef.current) return;
+    const stillFilling =
+      !result || result.totalCount === 0 || result.loadedCount < result.totalCount;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(runPoll, stillFilling ? LOADING_POLL_MS : IDLE_POLL_MS);
+  }
+
   useEffect(() => {
-    let cancelled = false;
-    let timer;
-
-    async function tick() {
-      if (cancelled) return;
-      const result = await load();
-      if (cancelled) return;
-      const stillFilling =
-        !result || result.totalCount === 0 || result.loadedCount < result.totalCount;
-      timer = setTimeout(tick, stillFilling ? LOADING_POLL_MS : IDLE_POLL_MS);
-    }
-
-    tick();
+    pollCancelledRef.current = false;
+    runPoll();
     return () => {
-      cancelled = true;
-      clearTimeout(timer);
+      pollCancelledRef.current = true;
+      clearTimeout(timerRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleLoadMore() {
     wantAllRef.current = true;
     setHasMore(false); // hide the button immediately; server confirms on next poll
-    load();
+    // Cancel any pending slow idle poll and immediately resume fast polling so
+    // the rest of the stocks visibly fill in.
+    clearTimeout(timerRef.current);
+    runPoll();
   }
 
   function handleSort(key) {
