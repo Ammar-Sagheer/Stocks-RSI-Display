@@ -41,10 +41,14 @@ if needed.
   the equity list + KSE-100 membership, splits equities into **core**
   (KSE-100) and **rest** (everything else), and fetches the core's RSI first.
   The rest is only fetched once the user clicks "Load more" (the API is
-  called with `?scope=all`). Both phases fetch with limited concurrency (4 at
-  a time) so the unofficial feed isn't hammered, merge records in one symbol
-  at a time so `getStockData()` never blocks, and retry symbols that fail
-  transiently once after a 10s cool-down. If the KSE-100 set can't be
+  called with `?scope=all`). Both phases fetch with limited concurrency (16 at
+  a time by default) so the meaningful stocks fill quickly, merge records in
+  one symbol at a time so `getStockData()` never blocks, and retry symbols
+  that fail transiently once after a short cool-down. Concurrency is tunable
+  via the `PSX_FETCH_CONCURRENCY` env var (also `PSX_RETRY_CONCURRENCY`,
+  `PSX_RETRY_DELAY_MS`): the high default suits a non-blocked IP (localhost in
+  Pakistan / a Pakistan-based VPS); set it to `4` or lower if you run on a
+  foreign cloud IP that PSX rate-limits. If the KSE-100 set can't be
   identified (market-watch unavailable), it falls back to using the first 100
   symbols as core so the app still works. The response carries
   `loadedCount`/`totalCount` (for the active scope), `hasMore`, `restTotal`,
