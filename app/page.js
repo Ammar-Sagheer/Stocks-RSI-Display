@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import StocksTable from "./components/StocksTable";
 
-const PAGE_SIZE = 25;
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
+const DEFAULT_PAGE_SIZE = 25;
 const POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 export default function Home() {
@@ -15,6 +16,7 @@ export default function Home() {
   const [sortKey, setSortKey] = useState("symbol");
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [expandedSymbol, setExpandedSymbol] = useState(null);
 
   async function load() {
@@ -82,28 +84,28 @@ export default function Home() {
     return copy;
   }, [filtered, sortKey, sortDir]);
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pageItems = sorted.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
   );
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black px-4 py-8 sm:px-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-6 flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
+    <div className="min-h-screen bg-zinc-50 dark:bg-black px-3 py-4 sm:px-6 sm:py-6">
+      <div className="mx-auto w-full max-w-screen-xl">
+        <header className="mb-4">
+          <h1 className="text-xl sm:text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
             PSX Stocks RSI Dashboard
           </h1>
-          <p className="text-sm text-zinc-500">
+          <p className="text-xs sm:text-sm text-zinc-500 mt-1">
             RSI(14) for all Pakistan Stock Exchange equities, snapshotted now
             and 1, 3, 7, 15 and 30 trading days ago. Data source: PSX free
             end-of-day feed.
           </p>
         </header>
 
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <input
             type="text"
             placeholder="Search symbol or name…"
@@ -112,12 +114,14 @@ export default function Home() {
               setSearch(e.target.value);
               setPage(1);
             }}
-            className="w-64 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full sm:w-64 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <div className="flex items-center gap-3 text-sm text-zinc-500">
-            {loading && <span>Loading stock data — first load can take up to a minute…</span>}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-zinc-500">
+            {loading && <span>Loading — first load can take up to a minute…</span>}
             {!loading && updatedAt && (
-              <span>Updated {new Date(updatedAt).toLocaleString()}</span>
+              <span className="whitespace-nowrap">
+                Updated {new Date(updatedAt).toLocaleString()}
+              </span>
             )}
             <button
               onClick={() => {
@@ -148,25 +152,44 @@ export default function Home() {
           }
         />
 
-        <div className="mt-4 flex items-center justify-between text-sm text-zinc-500">
+        <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs sm:text-sm text-zinc-500">
           <span>
             {sorted.length} stocks — page {currentPage} of {totalPages}
           </span>
-          <div className="flex gap-2">
-            <button
-              disabled={currentPage <= 1}
-              onClick={() => setPage((p) => p - 1)}
-              className="rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1 disabled:opacity-40"
-            >
-              Previous
-            </button>
-            <button
-              disabled={currentPage >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1 disabled:opacity-40"
-            >
-              Next
-            </button>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5">
+              Rows:
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1"
+              >
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex gap-2">
+              <button
+                disabled={currentPage <= 1}
+                onClick={() => setPage((p) => p - 1)}
+                className="rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1 disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <button
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+                className="rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1 disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
           </div>
         </div>
       </div>
