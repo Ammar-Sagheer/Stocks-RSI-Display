@@ -39,11 +39,12 @@ export async function GET() {
         loadedCount: snapshot.stocks.length,
         totalCount: snapshot.totalCount,
         failedSymbols: snapshot.failedSymbols,
+        backend: "redis",
       });
     }
 
     const data = await getStockData();
-    return NextResponse.json(data);
+    return NextResponse.json({ ...data, backend: "memory" });
   } catch (err) {
     return NextResponse.json(
       { error: err.message || "Failed to load stock data" },
