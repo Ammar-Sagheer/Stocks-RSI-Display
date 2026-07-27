@@ -107,3 +107,31 @@ Manual setup (no blueprint):
 A `render.yaml` (set to the free plan) is also included in the repo if you'd
 rather use Render's **Blueprint** flow (**New +** → **Blueprint**) instead of
 filling in the form by hand — it fills in the same settings automatically.
+
+**Known issue:** PSX's feed (`dps.psx.com.pk`) appears to block some cloud
+providers' IP ranges outright (connections get reset at the socket level —
+see `[psx]`/`[cache]` log lines with `UND_ERR_SOCKET` if this happens to you).
+If the app gets permanently stuck on "Fetching PSX symbol list…", that's a
+network-level block on the host's IP, not a code bug — try a different region
+or a different provider (see below).
+
+## Deploying on Railway
+
+Railway also runs the app as a persistent container (via Nixpacks, using the
+included `railway.json`), so the in-memory cache behaves the same way as on
+Render — no serverless cold starts. Its free tier is a small monthly usage
+credit rather than Render's always-available-but-sleeps model, so as long as
+you're within that credit the service stays warm and doesn't spin down
+between requests.
+
+1. In the Railway dashboard: **New Project** → **Deploy from GitHub repo** →
+   select this repo and the **`main`** branch.
+2. Railway auto-detects the Node app via `railway.json` (build:
+   `npm install && npm run build`, start: `npm run start`). No environment
+   variables are required.
+3. Deploy. Check the **Deployments → Logs** tab the same way as Render — look
+   for `[psx]`/`[cache]` lines. If PSX's feed is reachable from Railway's IP
+   range, you'll see the symbol list load and the stock count climb; if you
+   see repeated `UND_ERR_SOCKET`/connection-reset errors immediately, this
+   provider's IPs are blocked too and it's worth trying yet another region or
+   provider.
