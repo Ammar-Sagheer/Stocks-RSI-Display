@@ -1,8 +1,12 @@
 "use client";
 
 import { Fragment } from "react";
-import TradingViewChart from "./TradingViewChart";
+import RSIChart from "./RSIChart";
 import { RSI_SNAPSHOT_OFFSETS } from "@/lib/rsi";
+
+function tradingViewUrl(symbol) {
+  return `https://www.tradingview.com/chart/?symbol=PSX:${encodeURIComponent(symbol)}`;
+}
 
 const RSI_COLUMNS = RSI_SNAPSHOT_OFFSETS.map((o) => ({
   key: o.key,
@@ -102,10 +106,21 @@ export default function StocksTable({
                 {expandedSymbol === stock.symbol && (
                   <tr className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
                     <td colSpan={COLUMN_COUNT} className="px-4 py-3">
-                      <p className="text-xs text-zinc-500 mb-1">
-                        {stock.sector} — {stock.symbol} on TradingView
-                      </p>
-                      <TradingViewChart symbol={stock.symbol} height={500} />
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs text-zinc-500">
+                          {stock.sector} — RSI(14) trend for {stock.symbol}
+                        </p>
+                        <a
+                          href={tradingViewUrl(stock.symbol)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap"
+                        >
+                          Open on TradingView ↗
+                        </a>
+                      </div>
+                      <RSIChart history={stock.history} />
                     </td>
                   </tr>
                 )}
@@ -157,7 +172,18 @@ export default function StocksTable({
             </div>
             {expandedSymbol === stock.symbol && (
               <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 px-3 py-2">
-                <TradingViewChart symbol={stock.symbol} height={380} />
+                <div className="flex justify-end mb-1">
+                  <a
+                    href={tradingViewUrl(stock.symbol)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    Open on TradingView ↗
+                  </a>
+                </div>
+                <RSIChart history={stock.history} />
               </div>
             )}
           </div>

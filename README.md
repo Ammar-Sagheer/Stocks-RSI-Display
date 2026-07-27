@@ -2,11 +2,11 @@
 
 A simple Next.js dashboard listing Pakistan Stock Exchange (PSX) equities with
 their RSI(14), snapshotted now and 1, 3, 7, 15 and 30 trading days ago. Click a
-row to expand an embedded TradingView chart (with RSI indicator) for that
-stock. Click a column header to sort. Results are paginated (rows-per-page
-selector) and searchable by symbol/name. Layout is responsive: a fixed-width
-table on desktop/tablet with no horizontal scrolling, and stacked cards on
-mobile.
+row to expand an RSI trend chart (Recharts, built from our own EOD data) for
+that stock, plus a link to open the symbol on tradingview.com. Click a column
+header to sort. Results are paginated (rows-per-page selector) and searchable
+by symbol/name. Layout is responsive: a fixed-width table on desktop/tablet
+with no horizontal scrolling, and stacked cards on mobile.
 
 ## Data source
 
@@ -41,12 +41,13 @@ if needed.
   search, and responsive table/card layout. Polls `/api/stocks` every 2s
   while `loadedCount < totalCount` (showing a "loading X of Y" progress bar),
   then falls back to a 5-minute idle poll once the cache is fully warm.
-- `app/components/TradingViewChart.js` — embeds TradingView's free Advanced
-  Chart widget (`PSX:{symbol}`, daily interval, RSI study preloaded) so the
-  expanded row shows a live TradingView chart rather than a chart built from
-  our own EOD data. This is a client-side embed (loads `s3.tradingview.com/tv.js`
-  in the visitor's browser) — it needs outbound network access from wherever
-  the app is opened, same as any TradingView embed.
+- `app/components/RSIChart.js` — Recharts line chart of RSI(14) over time,
+  built from the `history` we already computed server-side. TradingView's
+  free embeddable widget was tried instead, but its public datafeed only
+  covers major exchanges (NASDAQ, NYSE, forex, crypto, etc.) and doesn't
+  include PSX, so it silently fell back to a default symbol. The expanded
+  row instead links out to `tradingview.com/chart/?symbol=PSX:{symbol}` for
+  anyone who wants the full interactive TradingView view in a new tab.
 
 ## Getting started
 
