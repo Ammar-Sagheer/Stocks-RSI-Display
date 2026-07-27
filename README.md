@@ -33,7 +33,7 @@ if needed.
   occasional transient connection reset/503 this feed produces under load.
 - `lib/rsi.js` — Wilder's RSI(14) calculation and day-offset snapshotting.
 - `lib/cache.js` — an in-memory cache that fetches all symbols with limited
-  concurrency (5 at a time) so the unofficial feed isn't hammered. Every
+  concurrency (8 at a time) so the unofficial feed isn't hammered. Every
   fetch (including the initial cold cache and later 15-minute-TTL refreshes)
   merges records in one symbol at a time rather than swapping in one big
   batch at the end, so `getStockData()` never blocks the caller — it always
