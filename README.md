@@ -16,7 +16,10 @@ endpoints that power PSX's own market-watch page):
 - `GET /symbols` — full list of listed instruments (bonds/TFCs/sukuks are
   filtered out since RSI isn't meaningful for debt instruments).
 - `GET /timeseries/eod/{symbol}` — daily end-of-day OHLC-ish history per
-  symbol. The most recent close is shown as the current price.
+  symbol. The most recent close is shown as the current price. Symbols whose
+  latest close is `0` (suspended/inactive listings the feed still lists but
+  hasn't reported real prices for in a long time) are dropped, since their
+  RSI would just be a meaningless flat 50.
 
 This means prices are **end-of-day, not tick-live** — that's normal for a free
 PSX data source. There is no official free PSX API; this endpoint is
