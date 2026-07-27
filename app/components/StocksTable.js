@@ -146,30 +146,32 @@ export default function StocksTable({
           >
             <button
               onClick={() => onToggleExpand(stock.symbol)}
-              className="w-full text-left px-3 py-2 flex items-center justify-between gap-2 active:bg-zinc-50 dark:active:bg-zinc-900/50"
+              className="w-full text-left active:bg-zinc-50 dark:active:bg-zinc-900/50"
             >
-              <div className="min-w-0">
-                <div className="font-medium truncate">
-                  {stock.symbol}{" "}
-                  <span className="font-normal text-zinc-500 text-xs">{stock.name}</span>
+              <div className="px-3 py-2 flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="font-medium truncate">
+                    {stock.symbol}{" "}
+                    <span className="font-normal text-zinc-500 text-xs">{stock.name}</span>
+                  </div>
+                  <div className="text-xs text-zinc-400 truncate">{stock.sector}</div>
                 </div>
-                <div className="text-xs text-zinc-400 truncate">{stock.sector}</div>
+                <div className="text-right shrink-0">
+                  <div className="text-sm">{formatValue("price", stock.price)}</div>
+                  <div className={`text-xs ${rsiColor(stock.rsiNow)}`}>
+                    RSI {formatValue("rsiNow", stock.rsiNow)}
+                  </div>
+                </div>
               </div>
-              <div className="text-right shrink-0">
-                <div className="text-sm">{formatValue("price", stock.price)}</div>
-                <div className={`text-xs ${rsiColor(stock.rsiNow)}`}>
-                  RSI {formatValue("rsiNow", stock.rsiNow)}
-                </div>
+              <div className="px-3 pb-2 grid grid-cols-3 gap-y-1 text-center text-xs">
+                {RSI_COLUMNS.map((c) => (
+                  <div key={c.key}>
+                    <div className="text-zinc-400">{c.label}</div>
+                    <div className={rsiColor(stock[c.key])}>{formatValue(c.key, stock[c.key])}</div>
+                  </div>
+                ))}
               </div>
             </button>
-            <div className="px-3 pb-2 grid grid-cols-3 gap-y-1 text-center text-xs">
-              {RSI_COLUMNS.map((c) => (
-                <div key={c.key}>
-                  <div className="text-zinc-400">{c.label}</div>
-                  <div className={rsiColor(stock[c.key])}>{formatValue(c.key, stock[c.key])}</div>
-                </div>
-              ))}
-            </div>
             {expandedSymbol === stock.symbol && (
               <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 px-3 py-2">
                 <div className="flex justify-end mb-1">
