@@ -33,12 +33,16 @@ if needed.
   occasional transient connection reset/503 this feed produces under load.
 - `lib/rsi.js` — Wilder's RSI(14) calculation and day-offset snapshotting.
 - `lib/cache.js` — an in-memory cache that fetches all symbols with limited
-  concurrency (8 at a time) so the unofficial feed isn't hammered. Every
+  concurrency (5 at a time) so the unofficial feed isn't hammered. Every
   fetch (including the initial cold cache and later 15-minute-TTL refreshes)
   merges records in one symbol at a time rather than swapping in one big
   batch at the end, so `getStockData()` never blocks the caller — it always
   returns whatever's currently loaded, plus `loadedCount`/`totalCount` so
-  the frontend can show progress and poll faster until it's done.
+  the frontend can show progress and poll faster until it's done. Symbols
+  that fail transiently (connection reset/503 under load) are queued and
+  retried once, after an 8s cool-down, instead of being silently dropped
+  for the rest of the 15-minute cycle; whatever's still unavailable after
+  that retry is reported as `failedSymbols` and surfaced in the UI.
 - `app/api/stocks/route.js` — returns the cached data as JSON.
 - `app/page.js` + `app/components/` — client-side table, sorting, pagination,
   search, and responsive table/card layout. Polls `/api/stocks` every 2s

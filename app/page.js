@@ -13,6 +13,7 @@ export default function Home() {
   const [updatedAt, setUpdatedAt] = useState(null);
   const [loadedCount, setLoadedCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [failedSymbols, setFailedSymbols] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
@@ -31,6 +32,7 @@ export default function Home() {
       setUpdatedAt(json.updatedAt);
       setLoadedCount(json.loadedCount);
       setTotalCount(json.totalCount);
+      setFailedSymbols(json.failedSymbols);
       setError(null);
       return json;
     } catch (err) {
@@ -191,6 +193,13 @@ export default function Home() {
         <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs sm:text-sm text-zinc-500">
           <span>
             {sorted.length} stocks — page {currentPage} of {totalPages}
+            {!stillFilling && failedSymbols > 0 && (
+              <span className="text-amber-600 dark:text-amber-500">
+                {" "}
+                · {failedSymbols} symbol{failedSymbols === 1 ? "" : "s"} unavailable
+                (PSX feed error) — will retry on next refresh
+              </span>
+            )}
           </span>
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-1.5">
