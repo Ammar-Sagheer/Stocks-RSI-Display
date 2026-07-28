@@ -1,7 +1,8 @@
 # PSX Stocks RSI Dashboard
 
 A simple Next.js dashboard listing Pakistan Stock Exchange (PSX) equities with
-their RSI(14), snapshotted now and 1, 3, 7, 15 and 30 trading days ago. It
+their RSI(14) on the **daily, weekly and monthly** timeframes — the same
+values TradingView shows at 1D / 1W / 1M. It
 loads the **KSE-100 index stocks first** (the ~100 most significant companies)
 so the meaningful data appears fast without hammering PSX with all ~750
 requests at once; a **"Load more"** button then fetches every other listed
@@ -38,7 +39,9 @@ if needed.
   `symbol → { current, isKse100 }`: the live CURRENT price (used for the
   displayed price, since the EOD feed's latest close is settled/stale, not
   live) and KSE-100 index membership.
-- `lib/rsi.js` — Wilder's RSI(14) calculation and day-offset snapshotting.
+- `lib/rsi.js` — Wilder's RSI(14) calculation, plus resampling of daily
+  closes into weekly/monthly closes so RSI(14) can be computed per timeframe
+  (daily / weekly / monthly), matching TradingView's 1D / 1W / 1M RSI.
 - `lib/cache.js` — a two-phase in-memory cache. On first request it fetches
   the equity list + KSE-100 membership, splits equities into **core**
   (KSE-100) and **rest** (everything else), and fetches the core's RSI first.

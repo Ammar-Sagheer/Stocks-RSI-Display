@@ -2,16 +2,16 @@
 
 import { Fragment } from "react";
 import RSIChart from "./RSIChart";
-import { RSI_SNAPSHOT_OFFSETS } from "@/lib/rsi";
+import { RSI_TIMEFRAMES } from "@/lib/rsi";
 
 function tradingViewUrl(symbol) {
   return `https://www.tradingview.com/chart/?symbol=PSX:${encodeURIComponent(symbol)}`;
 }
 
-const RSI_COLUMNS = RSI_SNAPSHOT_OFFSETS.map((o) => ({
+const RSI_COLUMNS = RSI_TIMEFRAMES.map((o) => ({
   key: o.key,
-  label: o.label.replace("RSI (", "").replace(")", ""),
-  fullLabel: o.label,
+  label: o.label,
+  fullLabel: `RSI(14) — ${o.label}`,
 }));
 
 const COLUMN_COUNT = 3 + RSI_COLUMNS.length; // symbol, name, price + RSI columns
@@ -158,8 +158,8 @@ export default function StocksTable({
                 </div>
                 <div className="text-right shrink-0">
                   <div className="text-sm">{formatValue("price", stock.price)}</div>
-                  <div className={`text-xs ${rsiColor(stock.rsiNow)}`}>
-                    RSI {formatValue("rsiNow", stock.rsiNow)}
+                  <div className={`text-xs ${rsiColor(stock.rsiDaily)}`}>
+                    RSI {formatValue("rsiDaily", stock.rsiDaily)}
                   </div>
                 </div>
               </div>

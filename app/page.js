@@ -144,10 +144,10 @@ export default function Home() {
             PSX Stocks RSI Dashboard
           </h1>
           <p className="text-xs sm:text-sm text-zinc-500 mt-1">
-            RSI(14) for Pakistan Stock Exchange equities, snapshotted now and 1,
-            3, 7, 15 and 30 trading days ago. Loads the KSE-100 index first —
-            use “Load more” for every other listed stock. Data source: PSX free
-            end-of-day feed.
+            RSI(14) for Pakistan Stock Exchange equities on the daily, weekly
+            and monthly timeframes (the same values TradingView shows at 1D /
+            1W / 1M). Loads the KSE-100 index first — use “Load more” for every
+            other listed stock. Data source: PSX free end-of-day feed.
           </p>
         </header>
 
