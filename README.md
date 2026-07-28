@@ -34,8 +34,10 @@ if needed.
 
 - `lib/psx.js` — fetches symbols and EOD series (with retries for the
   occasional transient connection reset/503 this feed produces under load),
-  plus `fetchKse100Symbols()`, which parses the market-watch page's "LISTED
-  IN" column to find the ~100 KSE-100 index members.
+  plus `fetchMarketWatch()`, which parses the market-watch page into
+  `symbol → { current, isKse100 }`: the live CURRENT price (used for the
+  displayed price, since the EOD feed's latest close is settled/stale, not
+  live) and KSE-100 index membership.
 - `lib/rsi.js` — Wilder's RSI(14) calculation and day-offset snapshotting.
 - `lib/cache.js` — a two-phase in-memory cache. On first request it fetches
   the equity list + KSE-100 membership, splits equities into **core**
