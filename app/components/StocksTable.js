@@ -14,7 +14,7 @@ const RSI_COLUMNS = RSI_TIMEFRAMES.map((o) => ({
   fullLabel: `RSI(14) — ${o.label}`,
 }));
 
-const COLUMN_COUNT = 3 + RSI_COLUMNS.length; // symbol, name, price + RSI columns
+const COLUMN_COUNT = 4 + RSI_COLUMNS.length; // symbol, name, price, RSI cols, volume
 
 function rsiColor(value) {
   if (value === null || value === undefined) return "text-zinc-400";
@@ -27,6 +27,14 @@ function formatValue(key, value) {
   if (value === null || value === undefined) return "—";
   if (key === "price") return Number(value).toFixed(2);
   return Number(value).toFixed(1);
+}
+
+function formatVolume(value) {
+  if (value === null || value === undefined) return "—";
+  if (value >= 1e9) return (value / 1e9).toFixed(2) + "B";
+  if (value >= 1e6) return (value / 1e6).toFixed(2) + "M";
+  if (value >= 1e3) return (value / 1e3).toFixed(1) + "K";
+  return String(value);
 }
 
 function SortIndicator({ active, dir }) {
@@ -48,12 +56,13 @@ export default function StocksTable({
       <div className="hidden sm:block overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
         <table className="w-full table-fixed text-xs md:text-sm">
           <colgroup>
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "22%" }} />
             <col style={{ width: "9%" }} />
-            <col style={{ width: "27%" }} />
-            <col style={{ width: "10%" }} />
             {RSI_COLUMNS.map((c) => (
-              <col key={c.key} style={{ width: `${54 / RSI_COLUMNS.length}%` }} />
+              <col key={c.key} style={{ width: `${45 / RSI_COLUMNS.length}%` }} />
             ))}
+            <col style={{ width: "16%" }} />
           </colgroup>
           <thead className="bg-zinc-100 dark:bg-zinc-900">
             <tr>
@@ -83,6 +92,14 @@ export default function StocksTable({
                   <SortIndicator active={sortKey === c.key} dir={sortDir} />
                 </th>
               ))}
+              <th
+                onClick={() => onSort("volume")}
+                title="Shares traded today"
+                className="px-2 py-2 text-left cursor-pointer select-none hover:bg-zinc-200 dark:hover:bg-zinc-800"
+              >
+                Volume
+                <SortIndicator active={sortKey === "volume"} dir={sortDir} />
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -102,6 +119,9 @@ export default function StocksTable({
                       {formatValue(c.key, stock[c.key])}
                     </td>
                   ))}
+                  <td className="px-2 py-2 truncate text-zinc-600 dark:text-zinc-300">
+                    {formatVolume(stock.volume)}
+                  </td>
                 </tr>
                 {expandedSymbol === stock.symbol && (
                   <tr className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
@@ -161,6 +181,7 @@ export default function StocksTable({
                   <div className={`text-xs ${rsiColor(stock.rsiDaily)}`}>
                     RSI {formatValue("rsiDaily", stock.rsiDaily)}
                   </div>
+                  <div className="text-xs text-zinc-400">Vol {formatVolume(stock.volume)}</div>
                 </div>
               </div>
               <div className="px-3 pb-2 grid grid-cols-3 gap-y-1 text-center text-xs">
