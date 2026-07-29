@@ -11,10 +11,15 @@ const LOADING_POLL_MS = 2000;
 
 const FILTERS = [
   { key: "all", label: "All" },
-  { key: "oversold", label: "Oversold", hint: "Daily RSI ≤ 30" },
-  { key: "overbought", label: "Overbought", hint: "Daily RSI ≥ 70" },
+  { key: "oversold", label: "Oversold", hint: "RSI ≤ 30 on any timeframe" },
+  { key: "overbought", label: "Overbought", hint: "RSI ≥ 70 on any timeframe" },
   { key: "kse100", label: "KSE-100" },
 ];
+
+const RSI_TIMEFRAME_KEYS = ["rsiDaily", "rsiWeekly", "rsiMonthly"];
+function rsiValues(stock) {
+  return RSI_TIMEFRAME_KEYS.map((k) => stock[k]).filter((v) => v !== null && v !== undefined);
+}
 
 export default function Home() {
   const [stocks, setStocks] = useState([]);
@@ -118,8 +123,8 @@ export default function Home() {
       if (q && !s.symbol.toLowerCase().includes(q) && !(s.name || "").toLowerCase().includes(q)) {
         return false;
       }
-      if (quickFilter === "oversold") return s.rsiDaily !== null && s.rsiDaily <= 30;
-      if (quickFilter === "overbought") return s.rsiDaily !== null && s.rsiDaily >= 70;
+      if (quickFilter === "oversold") return rsiValues(s).some((v) => v <= 30);
+      if (quickFilter === "overbought") return rsiValues(s).some((v) => v >= 70);
       if (quickFilter === "kse100") return s.isKse100;
       return true;
     });
@@ -159,7 +164,7 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
       {/* Sticky top bar */}
       <div className="sticky top-0 z-20 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/90 dark:bg-zinc-950/90 backdrop-blur supports-[backdrop-filter]:bg-zinc-50/70 dark:supports-[backdrop-filter]:bg-zinc-950/70">
-        <div className="mx-auto w-full max-w-screen-xl px-3 sm:px-6 py-3">
+        <div className="mx-auto w-full max-w-[1600px] px-3 sm:px-6 py-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div className="h-7 w-7 rounded-md bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
@@ -194,7 +199,7 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-screen-xl px-3 sm:px-6 py-4 space-y-4">
+      <div className="mx-auto w-full max-w-[1600px] px-3 sm:px-6 py-4 space-y-4">
         <MarketSummary stocks={stocks} />
 
         {stillFilling && (

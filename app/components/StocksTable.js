@@ -88,13 +88,13 @@ export default function StocksTable({
         <div className="max-h-[70vh] overflow-y-auto">
           <table className="w-full table-fixed text-xs md:text-sm">
             <colgroup>
-              <col style={{ width: "9%" }} />
-              <col style={{ width: "21%" }} />
-              <col style={{ width: "9%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "8%" }} />
               {RSI_COLUMNS.map((c) => (
-                <col key={c.key} style={{ width: `${45 / RSI_COLUMNS.length}%` }} />
+                <col key={c.key} style={{ width: `${39 / RSI_COLUMNS.length}%` }} />
               ))}
-              <col style={{ width: "16%" }} />
+              <col style={{ width: "21%" }} />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-zinc-100/95 dark:bg-zinc-900/95 backdrop-blur supports-[backdrop-filter]:bg-zinc-100/80 dark:supports-[backdrop-filter]:bg-zinc-900/80">
               <tr className="border-b border-zinc-200 dark:border-zinc-800">
@@ -143,7 +143,7 @@ export default function StocksTable({
                     onClick={() => onToggleExpand(stock.symbol)}
                     className="border-t border-zinc-100 dark:border-zinc-800/70 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/60 transition-colors"
                   >
-                    <td className="px-3 py-2 font-semibold text-zinc-900 dark:text-zinc-50 truncate">
+                    <td className="px-3 py-2 font-semibold text-zinc-900 dark:text-zinc-50 whitespace-nowrap">
                       {stock.symbol}
                       {stock.isKse100 && <Kse100Tag />}
                     </td>
