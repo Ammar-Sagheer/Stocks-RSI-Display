@@ -2,11 +2,19 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import StocksTable from "./components/StocksTable";
+import MarketSummary from "./components/MarketSummary";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const DEFAULT_PAGE_SIZE = 25;
 const IDLE_POLL_MS = 5 * 60 * 1000;
 const LOADING_POLL_MS = 2000;
+
+const FILTERS = [
+  { key: "all", label: "All" },
+  { key: "oversold", label: "Oversold", hint: "Daily RSI ≤ 30" },
+  { key: "overbought", label: "Overbought", hint: "Daily RSI ≥ 70" },
+  { key: "kse100", label: "KSE-100" },
+];
 
 export default function Home() {
   const [stocks, setStocks] = useState([]);
@@ -21,6 +29,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
+  const [quickFilter, setQuickFilter] = useState("all");
   const [sortKey, setSortKey] = useState("symbol");
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(1);
@@ -98,15 +107,23 @@ export default function Home() {
     setPage(1);
   }
 
+  function handleQuickFilter(key) {
+    setQuickFilter(key);
+    setPage(1);
+  }
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return stocks;
-    return stocks.filter(
-      (s) =>
-        s.symbol.toLowerCase().includes(q) ||
-        (s.name || "").toLowerCase().includes(q)
-    );
-  }, [stocks, search]);
+    return stocks.filter((s) => {
+      if (q && !s.symbol.toLowerCase().includes(q) && !(s.name || "").toLowerCase().includes(q)) {
+        return false;
+      }
+      if (quickFilter === "oversold") return s.rsiDaily !== null && s.rsiDaily <= 30;
+      if (quickFilter === "overbought") return s.rsiDaily !== null && s.rsiDaily >= 70;
+      if (quickFilter === "kse100") return s.isKse100;
+      return true;
+    });
+  }, [stocks, search, quickFilter]);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
@@ -136,52 +153,52 @@ export default function Home() {
   const scopeLabel =
     scope === "all" ? "all PSX stocks" : usingFallback ? "top stocks" : "KSE-100 stocks";
 
-  return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black px-3 py-4 sm:px-6 sm:py-6">
-      <div className="mx-auto w-full max-w-screen-xl">
-        <header className="mb-4">
-          <h1 className="text-xl sm:text-2xl font-semibold text-zinc-900 dark:text-zinc-50">
-            PSX Stocks RSI Dashboard
-          </h1>
-          <p className="text-xs sm:text-sm text-zinc-500 mt-1">
-            RSI(14) for Pakistan Stock Exchange equities on the daily, weekly
-            and monthly timeframes (the same values TradingView shows at 1D /
-            1W / 1M). Loads the KSE-100 index first — use “Load more” for every
-            other listed stock. Data source: PSX free end-of-day feed.
-          </p>
-        </header>
+  const visibleFilters = usingFallback ? FILTERS.filter((f) => f.key !== "kse100") : FILTERS;
 
-        <div className="mb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <input
-            type="text"
-            placeholder="Search symbol or name…"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="w-full sm:w-64 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-zinc-500">
-            {updatedAt && (
-              <span className="whitespace-nowrap">
-                Updated {new Date(updatedAt).toLocaleString()}
-              </span>
-            )}
-            <button
-              onClick={() => {
-                setLoading(true);
-                load();
-              }}
-              className="rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-900"
-            >
-              Refresh
-            </button>
+  return (
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+      {/* Sticky top bar */}
+      <div className="sticky top-0 z-20 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/90 dark:bg-zinc-950/90 backdrop-blur supports-[backdrop-filter]:bg-zinc-50/70 dark:supports-[backdrop-filter]:bg-zinc-950/70">
+        <div className="mx-auto w-full max-w-screen-xl px-3 sm:px-6 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="h-7 w-7 rounded-md bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                R
+              </div>
+              <div>
+                <h1 className="text-base sm:text-lg font-semibold text-zinc-900 dark:text-zinc-50 leading-tight">
+                  PSX RSI Dashboard
+                </h1>
+                <p className="hidden sm:block text-[11px] text-zinc-400 dark:text-zinc-500 leading-tight">
+                  Daily / Weekly / Monthly RSI(14) — matches TradingView timeframes
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-zinc-500">
+              {updatedAt && (
+                <span className="hidden sm:inline whitespace-nowrap">
+                  Updated {new Date(updatedAt).toLocaleTimeString()}
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  setLoading(true);
+                  load();
+                }}
+                className="rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
         </div>
+      </div>
+
+      <div className="mx-auto w-full max-w-screen-xl px-3 sm:px-6 py-4 space-y-4">
+        <MarketSummary stocks={stocks} />
 
         {stillFilling && (
-          <div className="mb-3 rounded-md border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/50 px-3 py-2">
+          <div className="rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 px-3 py-2">
             <div className="flex items-center justify-between text-xs sm:text-sm text-blue-800 dark:text-blue-300 mb-1.5">
               <span>
                 {totalCount === 0
@@ -199,10 +216,43 @@ export default function Home() {
         )}
 
         {error && (
-          <p className="mb-4 rounded-md bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+          <p className="rounded-xl bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300">
             {error}
           </p>
         )}
+
+        {/* Search + quick filters */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+          <input
+            type="text"
+            placeholder="Search symbol or name…"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            className="w-full sm:w-64 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {visibleFilters.map((f) => {
+              const active = quickFilter === f.key;
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => handleQuickFilter(f.key)}
+                  title={f.hint}
+                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                    active
+                      ? "bg-blue-600 border-blue-600 text-white"
+                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {loading ? (
           <p className="text-sm text-zinc-500 py-6 text-center">Loading…</p>
@@ -220,17 +270,17 @@ export default function Home() {
         )}
 
         {hasMore && (
-          <div className="mt-3 flex justify-center">
+          <div className="flex justify-center">
             <button
               onClick={handleLoadMore}
-              className="rounded-md border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50"
+              className="rounded-lg border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
             >
               Load all other PSX stocks ({restTotal} more)
             </button>
           </div>
         )}
 
-        <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs sm:text-sm text-zinc-500">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs sm:text-sm text-zinc-500">
           <span>
             {sorted.length} stocks ({scope === "all" ? "all PSX" : usingFallback ? "top 100" : "KSE-100"})
             {" — "}page {currentPage} of {totalPages}

@@ -1,16 +1,20 @@
 # PSX Stocks RSI Dashboard
 
-A simple Next.js dashboard listing Pakistan Stock Exchange (PSX) equities with
-their RSI(14) on the **daily, weekly and monthly** timeframes — the same
-values TradingView shows at 1D / 1W / 1M. It
-loads the **KSE-100 index stocks first** (the ~100 most significant companies)
-so the meaningful data appears fast without hammering PSX with all ~750
-requests at once; a **"Load more"** button then fetches every other listed
-stock on demand. Click a row to expand an RSI trend chart (Recharts, built
-from our own EOD data), plus a link to open the symbol on tradingview.com.
-Click a column header to sort. Results are paginated (rows-per-page selector)
-and searchable by symbol/name. Layout is responsive: a fixed-width table on
-desktop/tablet with no horizontal scrolling, and stacked cards on mobile.
+A Next.js dashboard listing Pakistan Stock Exchange (PSX) equities with their
+RSI(14) on the **daily, weekly and monthly** timeframes — the same values
+TradingView shows at 1D / 1W / 1M. Styled as a fintech-style dashboard: a
+market-breadth summary (tracked / overbought / oversold / neutral counts), RSI
+values shown as a color heatmap (green → amber → red), quick filter chips
+(Oversold / Overbought / KSE-100), and a sticky table header so columns stay
+visible while scrolling. It loads the **KSE-100 index stocks first** (the
+~100 most significant companies, tagged with a "100" badge) so the meaningful
+data appears fast without hammering PSX with all ~750 requests at once; a
+**"Load more"** button then fetches every other listed stock on demand. Click
+a row to expand an RSI trend chart (Recharts, built from our own EOD data),
+plus a link to open the symbol on tradingview.com. Click a column header to
+sort. Results are paginated (rows-per-page selector) and searchable by
+symbol/name. Layout is responsive: a fixed-width table on desktop/tablet with
+no horizontal scrolling, and stacked cards on mobile.
 
 ## Data source
 
@@ -72,6 +76,14 @@ if needed.
   include PSX, so it silently fell back to a default symbol. The expanded
   row instead links out to `tradingview.com/chart/?symbol=PSX:{symbol}` for
   anyone who wants the full interactive TradingView view in a new tab.
+- `app/components/MarketSummary.js` — the four stat tiles (Tracked /
+  Overbought / Oversold / Neutral), computed from every currently-loaded
+  stock's Daily RSI, not just the visible page.
+- `StocksTable`'s RSI cells render as a continuous green → amber → red
+  heatmap pill (`rsiHeat()`), keyed on value rather than fixed bands, and the
+  desktop table's header is `sticky` inside a `max-h-[70vh]` scrollable body
+  so columns stay visible on long pages. Quick filter chips (All / Oversold /
+  Overbought / KSE-100) live in `app/page.js` and combine with the search box.
 
 ## Getting started
 
