@@ -16,27 +16,66 @@ const RSI_COLUMNS = RSI_TIMEFRAMES.map((o) => ({
 
 const COLUMN_COUNT = 4 + RSI_COLUMNS.length; // symbol, name, price, RSI cols, volume
 
-// Continuous green -> amber -> red heatmap keyed on RSI value, used for both
-// the pill background and its text color. Oversold (low RSI) reads as green
-// (a "buy" signal color), overbought (high RSI) as red — standard RSI
-// convention — with a neutral amber around 50.
-function rsiHeat(value) {
-  if (value === null || value === undefined) {
-    return { background: "transparent", color: "var(--rsi-muted, #71717a)" };
-  }
-  const v = Math.max(0, Math.min(100, value));
-  const hue = v <= 50 ? 142 - (v / 50) * (142 - 45) : 45 - ((v - 50) / 50) * 45;
-  return {
-    backgroundColor: `hsla(${hue}, 72%, 45%, 0.16)`,
-    color: `hsl(${hue}, 75%, 62%)`,
-    border: `1px solid hsla(${hue}, 72%, 45%, 0.35)`,
-  };
+// A value's zone decides the meter-fill color: the two extremes wear the
+// reserved status hues (oversold = green "buy" signal, overbought = red),
+// everything in between the neutral accent. The number itself always stays
+// in ink — the colored meter beside it carries the signal, and the fill's
+// *position* on the 0–100 track repeats it spatially, so color is never the
+// only channel.
+function rsiZone(value) {
+  if (value >= 70) return "overbought";
+  if (value <= 30) return "oversold";
+  return "neutral";
 }
 
-function formatValue(key, value) {
+const ZONE_FILL = {
+  overbought: "var(--down)",
+  oversold: "var(--up)",
+  neutral: "var(--accent)",
+};
+
+function RSICell({ value, align = "center" }) {
+  if (value === null || value === undefined) {
+    return <span className="text-sm text-ink-3">—</span>;
+  }
+  const zone = rsiZone(value);
+  const extreme = zone !== "neutral";
+  return (
+    <span
+      className={`inline-flex w-14 flex-col gap-[5px] ${
+        align === "center" ? "items-center" : "items-end"
+      }`}
+      title={zone === "neutral" ? undefined : zone}
+    >
+      <span
+        className={`font-mono text-[13px] leading-none tabular-nums text-ink ${
+          extreme ? "font-semibold" : ""
+        }`}
+      >
+        {Number(value).toFixed(1)}
+      </span>
+      <span className="relative block h-[3px] w-full rounded-full bg-surface-2">
+        <span
+          className="absolute left-0 top-0 h-full rounded-full"
+          style={{
+            width: `${Math.max(3, Math.min(100, value))}%`,
+            backgroundColor: ZONE_FILL[zone],
+          }}
+        />
+        {/* 30 / 70 threshold ticks over the track */}
+        <span className="absolute left-[30%] top-[-2px] h-[7px] w-px bg-ink/20" />
+        <span className="absolute left-[70%] top-[-2px] h-[7px] w-px bg-ink/20" />
+      </span>
+    </span>
+  );
+}
+
+function formatPrice(value) {
   if (value === null || value === undefined) return "—";
-  if (key === "price") return Number(value).toFixed(2);
-  return Number(value).toFixed(1);
+  return Number(value).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatVolume(value) {
@@ -48,28 +87,52 @@ function formatVolume(value) {
 }
 
 function SortIndicator({ active, dir }) {
-  if (!active) return null;
-  return <span className="text-blue-500 dark:text-blue-400">{dir === "asc" ? " ▲" : " ▼"}</span>;
-}
-
-function RSIBadge({ value }) {
   return (
     <span
-      className="inline-block min-w-[3.2rem] rounded-md px-2 py-0.5 text-center font-medium tabular-nums"
-      style={rsiHeat(value)}
+      className={`ml-0.5 inline-block text-[9px] transition-opacity ${
+        active ? "text-accent opacity-100" : "opacity-0"
+      }`}
+      aria-hidden
     >
-      {formatValue("rsi", value)}
+      {dir === "asc" && active ? "▲" : "▼"}
     </span>
   );
 }
 
 function Kse100Tag() {
   return (
-    <span className="ml-1.5 rounded border border-blue-400/30 bg-blue-500/10 px-1 py-px text-[10px] font-semibold tracking-wide text-blue-600 dark:text-blue-400 align-middle">
+    <span className="ml-1.5 rounded border border-accent/30 bg-accent-soft px-1 py-px align-middle text-[9px] font-semibold tracking-wide text-accent">
       100
     </span>
   );
 }
+
+function ExpandedChart({ stock }) {
+  return (
+    <>
+      <div className="mb-1 flex items-center justify-between">
+        <p className="text-xs text-ink-3">
+          {stock.sector} — RSI(14) trend for{" "}
+          <span className="font-medium text-ink-2">{stock.symbol}</span>
+        </p>
+        <a
+          href={tradingViewUrl(stock.symbol)}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="whitespace-nowrap text-xs font-medium text-accent hover:underline"
+        >
+          Open on TradingView ↗
+        </a>
+      </div>
+      <RSIChart history={stock.history} />
+    </>
+  );
+}
+
+const headerCell =
+  "px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-ink-3 select-none";
+const sortableCell = `${headerCell} cursor-pointer transition-colors hover:text-ink`;
 
 export default function StocksTable({
   stocks,
@@ -84,34 +147,26 @@ export default function StocksTable({
       {/* Desktop / tablet: fixed-width table, sized to never need horizontal
           scroll, with a sticky header inside a scrollable body so long pages
           (e.g. 100 rows) keep the column headers in view. */}
-      <div className="hidden sm:block overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-sm">
+      <div className="hidden overflow-hidden rounded-xl border border-hairline bg-surface shadow-sm sm:block">
         <div className="max-h-[70vh] overflow-y-auto">
           <table className="w-full table-fixed text-xs md:text-sm">
             <colgroup>
               <col style={{ width: "12%" }} />
-              <col style={{ width: "20%" }} />
-              <col style={{ width: "8%" }} />
+              <col style={{ width: "22%" }} />
+              <col style={{ width: "9%" }} />
               {RSI_COLUMNS.map((c) => (
                 <col key={c.key} style={{ width: `${39 / RSI_COLUMNS.length}%` }} />
               ))}
-              <col style={{ width: "21%" }} />
+              <col style={{ width: "18%" }} />
             </colgroup>
-            <thead className="sticky top-0 z-10 bg-zinc-100/95 dark:bg-zinc-900/95 backdrop-blur supports-[backdrop-filter]:bg-zinc-100/80 dark:supports-[backdrop-filter]:bg-zinc-900/80">
-              <tr className="border-b border-zinc-200 dark:border-zinc-800">
-                <th
-                  onClick={() => onSort("symbol")}
-                  className="px-3 py-2.5 text-left font-semibold text-zinc-600 dark:text-zinc-300 cursor-pointer select-none hover:text-zinc-900 dark:hover:text-white"
-                >
+            <thead className="sticky top-0 z-10 bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/85">
+              <tr className="border-b border-grid">
+                <th onClick={() => onSort("symbol")} className={`${sortableCell} text-left`}>
                   Symbol
                   <SortIndicator active={sortKey === "symbol"} dir={sortDir} />
                 </th>
-                <th className="px-3 py-2.5 text-left font-semibold text-zinc-600 dark:text-zinc-300">
-                  Name
-                </th>
-                <th
-                  onClick={() => onSort("price")}
-                  className="px-3 py-2.5 text-right font-semibold text-zinc-600 dark:text-zinc-300 cursor-pointer select-none hover:text-zinc-900 dark:hover:text-white"
-                >
+                <th className={`${headerCell} text-left`}>Name</th>
+                <th onClick={() => onSort("price")} className={`${sortableCell} text-right`}>
                   Price
                   <SortIndicator active={sortKey === "price"} dir={sortDir} />
                 </th>
@@ -120,7 +175,7 @@ export default function StocksTable({
                     key={c.key}
                     onClick={() => onSort(c.key)}
                     title={c.fullLabel}
-                    className="px-3 py-2.5 text-center font-semibold text-zinc-600 dark:text-zinc-300 cursor-pointer select-none hover:text-zinc-900 dark:hover:text-white"
+                    className={`${sortableCell} text-center`}
                   >
                     {c.label}
                     <SortIndicator active={sortKey === c.key} dir={sortDir} />
@@ -129,7 +184,7 @@ export default function StocksTable({
                 <th
                   onClick={() => onSort("volume")}
                   title="Shares traded today"
-                  className="px-3 py-2.5 text-right font-semibold text-zinc-600 dark:text-zinc-300 cursor-pointer select-none hover:text-zinc-900 dark:hover:text-white"
+                  className={`${sortableCell} text-right`}
                 >
                   Volume
                   <SortIndicator active={sortKey === "volume"} dir={sortDir} />
@@ -141,48 +196,36 @@ export default function StocksTable({
                 <Fragment key={stock.symbol}>
                   <tr
                     onClick={() => onToggleExpand(stock.symbol)}
-                    className="border-t border-zinc-100 dark:border-zinc-800/70 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-900/60 transition-colors"
+                    className={`cursor-pointer border-t border-grid/60 transition-colors hover:bg-surface-2/60 ${
+                      expandedSymbol === stock.symbol ? "bg-surface-2/60" : ""
+                    }`}
                   >
-                    <td className="px-3 py-2 font-semibold text-zinc-900 dark:text-zinc-50 whitespace-nowrap">
+                    <td className="whitespace-nowrap px-3 py-2.5 text-[13px] font-semibold text-ink">
                       {stock.symbol}
                       {stock.isKse100 && <Kse100Tag />}
                     </td>
                     <td
-                      className="px-3 py-2 truncate text-zinc-500 dark:text-zinc-400"
+                      className="truncate px-3 py-2.5 text-ink-2"
                       title={`${stock.name} — ${stock.sector}`}
                     >
                       {stock.name}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-zinc-800 dark:text-zinc-100">
-                      {formatValue("price", stock.price)}
+                    <td className="px-3 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">
+                      {formatPrice(stock.price)}
                     </td>
                     {RSI_COLUMNS.map((c) => (
-                      <td key={c.key} className="px-2 py-2 text-center">
-                        <RSIBadge value={stock[c.key]} />
+                      <td key={c.key} className="px-2 py-2.5 text-center">
+                        <RSICell value={stock[c.key]} />
                       </td>
                     ))}
-                    <td className="px-3 py-2 text-right tabular-nums text-zinc-500 dark:text-zinc-400">
+                    <td className="px-3 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink-3">
                       {formatVolume(stock.volume)}
                     </td>
                   </tr>
                   {expandedSymbol === stock.symbol && (
-                    <tr className="border-t border-zinc-100 dark:border-zinc-800/70 bg-zinc-50/70 dark:bg-zinc-900/40">
+                    <tr className="border-t border-grid/60 bg-page/60">
                       <td colSpan={COLUMN_COUNT} className="px-4 py-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <p className="text-xs text-zinc-500">
-                            {stock.sector} — RSI(14) trend for {stock.symbol}
-                          </p>
-                          <a
-                            href={tradingViewUrl(stock.symbol)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-xs text-blue-600 dark:text-blue-400 hover:underline whitespace-nowrap"
-                          >
-                            Open on TradingView ↗
-                          </a>
-                        </div>
-                        <RSIChart history={stock.history} />
+                        <ExpandedChart stock={stock} />
                       </td>
                     </tr>
                   )}
@@ -190,7 +233,7 @@ export default function StocksTable({
               ))}
               {stocks.length === 0 && (
                 <tr>
-                  <td colSpan={COLUMN_COUNT} className="px-3 py-10 text-center text-zinc-500">
+                  <td colSpan={COLUMN_COUNT} className="px-3 py-12 text-center text-ink-3">
                     No stocks match your filter.
                   </td>
                 </tr>
@@ -201,61 +244,52 @@ export default function StocksTable({
       </div>
 
       {/* Mobile: stacked cards instead of a cramped scrolling table */}
-      <div className="sm:hidden space-y-2">
+      <div className="space-y-2 sm:hidden">
         {stocks.map((stock) => (
           <div
             key={stock.symbol}
-            className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden shadow-sm"
+            className="overflow-hidden rounded-xl border border-hairline bg-surface shadow-sm"
           >
             <button
               onClick={() => onToggleExpand(stock.symbol)}
-              className="w-full text-left active:bg-zinc-50 dark:active:bg-zinc-900/50"
+              className="w-full text-left active:bg-surface-2/60"
             >
-              <div className="px-3 py-2.5 flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2 px-3 py-2.5">
                 <div className="min-w-0">
-                  <div className="font-semibold text-zinc-900 dark:text-zinc-50 truncate">
+                  <div className="truncate font-semibold text-ink">
                     {stock.symbol}
                     {stock.isKse100 && <Kse100Tag />}{" "}
-                    <span className="font-normal text-zinc-500 text-xs">{stock.name}</span>
+                    <span className="text-xs font-normal text-ink-3">{stock.name}</span>
                   </div>
-                  <div className="text-xs text-zinc-400 truncate">{stock.sector}</div>
+                  <div className="truncate text-xs text-ink-3">{stock.sector}</div>
                 </div>
-                <div className="text-right shrink-0">
-                  <div className="text-sm tabular-nums text-zinc-800 dark:text-zinc-100">
-                    {formatValue("price", stock.price)}
+                <div className="shrink-0 text-right">
+                  <div className="font-mono text-sm tabular-nums text-ink">
+                    {formatPrice(stock.price)}
                   </div>
-                  <div className="text-xs text-zinc-400">Vol {formatVolume(stock.volume)}</div>
+                  <div className="text-xs text-ink-3">Vol {formatVolume(stock.volume)}</div>
                 </div>
               </div>
-              <div className="px-3 pb-2.5 grid grid-cols-3 gap-1.5 text-center text-xs">
+              <div className="grid grid-cols-3 gap-1.5 px-3 pb-3 text-center text-xs">
                 {RSI_COLUMNS.map((c) => (
                   <div key={c.key}>
-                    <div className="text-zinc-400 mb-0.5">{c.label}</div>
-                    <RSIBadge value={stock[c.key]} />
+                    <div className="mb-1 text-[10px] uppercase tracking-wider text-ink-3">
+                      {c.label}
+                    </div>
+                    <RSICell value={stock[c.key]} />
                   </div>
                 ))}
               </div>
             </button>
             {expandedSymbol === stock.symbol && (
-              <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 px-3 py-2">
-                <div className="flex justify-end mb-1">
-                  <a
-                    href={tradingViewUrl(stock.symbol)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                  >
-                    Open on TradingView ↗
-                  </a>
-                </div>
-                <RSIChart history={stock.history} />
+              <div className="border-t border-hairline bg-page/60 px-3 py-2">
+                <ExpandedChart stock={stock} />
               </div>
             )}
           </div>
         ))}
         {stocks.length === 0 && (
-          <p className="text-center text-zinc-500 py-10">No stocks match your filter.</p>
+          <p className="py-12 text-center text-ink-3">No stocks match your filter.</p>
         )}
       </div>
     </>

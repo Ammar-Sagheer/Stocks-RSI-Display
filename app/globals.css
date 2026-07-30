@@ -1,26 +1,107 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens — a warm-neutral surface system with an ink hierarchy and
+ * reserved status colors. Light and dark are each *selected* palettes (not an
+ * automatic invert): every value below was validated for contrast against its
+ * own surface. Components reference roles, never raw hex, so the whole theme
+ * swaps in this one file.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  color-scheme: light;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Planes */
+  --page: #f9f9f7;
+  --surface: #fcfcfb;
+  --surface-2: #f0efec;
+
+  /* Ink */
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-3: #898781;
+
+  /* Chrome */
+  --grid: #e1e0d9;
+  --hairline: rgba(11, 11, 11, 0.1);
+
+  /* Accent (categorical slot 1 — the only "series" hue on the site) */
+  --accent: #2a78d6;
+  --accent-soft: rgba(42, 120, 214, 0.1);
+
+  /* Status — reserved semantics, never decorative.
+     up = oversold/bullish signal, down = overbought/bearish signal. */
+  --up: #0ca30c;
+  --up-text: #006300;
+  --down: #d03b3b;
+  --warning: #fab219;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: dark;
+
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #262624;
+
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --ink-3: #898781;
+
+    --grid: #2c2c2a;
+    --hairline: rgba(255, 255, 255, 0.1);
+
+    --accent: #3987e5;
+    --accent-soft: rgba(57, 135, 229, 0.14);
+
+    --up: #0ca30c;
+    --up-text: #0ca30c;
+    --down: #d03b3b;
+    --warning: #fab219;
   }
 }
 
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-grid: var(--grid);
+  --color-hairline: var(--hairline);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-up: var(--up);
+  --color-up-text: var(--up-text);
+  --color-down: var(--down);
+  --color-warning: var(--warning);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+}
+
+/* The soft pulse on the "live" indicator dot in the top bar. */
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.animate-live-pulse {
+  animation: live-pulse 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-live-pulse {
+    animation: none;
+  }
 }

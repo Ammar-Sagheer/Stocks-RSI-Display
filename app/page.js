@@ -21,6 +21,76 @@ function rsiValues(stock) {
   return RSI_TIMEFRAME_KEYS.map((k) => stock[k]).filter((v) => v !== null && v !== undefined);
 }
 
+function BrandMark() {
+  return (
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-white shadow-sm">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-4 w-4"
+        aria-hidden
+      >
+        <polyline points="2 12 6.5 12 9.5 5 14.5 19 17.5 12 22 12" />
+      </svg>
+    </div>
+  );
+}
+
+function RefreshIcon({ spinning }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`h-3.5 w-3.5 ${spinning ? "animate-spin" : ""}`}
+      aria-hidden
+    >
+      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+      <polyline points="21 3 21 9 15 9" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-3.5 w-3.5"
+      aria-hidden
+    >
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.2" y2="16.2" />
+    </svg>
+  );
+}
+
+function ThresholdLegend() {
+  return (
+    <div className="hidden items-center gap-3 text-[11px] text-ink-3 lg:flex">
+      <span className="flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--up)" }} />
+        ≤ 30 oversold
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--down)" }} />
+        ≥ 70 overbought
+      </span>
+    </div>
+  );
+}
+
 export default function Home() {
   const [stocks, setStocks] = useState([]);
   const [updatedAt, setUpdatedAt] = useState(null);
@@ -161,27 +231,29 @@ export default function Home() {
   const visibleFilters = usingFallback ? FILTERS.filter((f) => f.key !== "kse100") : FILTERS;
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+    <div className="min-h-screen bg-page">
       {/* Sticky top bar */}
-      <div className="sticky top-0 z-20 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/90 dark:bg-zinc-950/90 backdrop-blur supports-[backdrop-filter]:bg-zinc-50/70 dark:supports-[backdrop-filter]:bg-zinc-950/70">
-        <div className="mx-auto w-full max-w-[1600px] px-3 sm:px-6 py-3">
+      <header className="sticky top-0 z-20 border-b border-hairline bg-page/90 backdrop-blur supports-[backdrop-filter]:bg-page/75">
+        <div className="mx-auto w-full max-w-[1600px] px-3 py-3 sm:px-6">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <div className="h-7 w-7 rounded-md bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
-                R
-              </div>
+            <div className="flex items-center gap-2.5">
+              <BrandMark />
               <div>
-                <h1 className="text-base sm:text-lg font-semibold text-zinc-900 dark:text-zinc-50 leading-tight">
+                <h1 className="text-base font-semibold leading-tight text-ink sm:text-lg">
                   PSX RSI Dashboard
                 </h1>
-                <p className="hidden sm:block text-[11px] text-zinc-400 dark:text-zinc-500 leading-tight">
+                <p className="hidden text-[11px] leading-tight text-ink-3 sm:block">
                   Daily / Weekly / Monthly RSI(14) — matches TradingView timeframes
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2 text-xs sm:text-sm text-zinc-500">
+            <div className="flex items-center gap-3 text-xs text-ink-3 sm:text-sm">
               {updatedAt && (
-                <span className="hidden sm:inline whitespace-nowrap">
+                <span className="hidden items-center gap-1.5 whitespace-nowrap sm:flex">
+                  <span
+                    className="animate-live-pulse h-1.5 w-1.5 rounded-full"
+                    style={{ backgroundColor: "var(--up)" }}
+                  />
                   Updated {new Date(updatedAt).toLocaleTimeString()}
                 </span>
               )}
@@ -190,30 +262,31 @@ export default function Home() {
                   setLoading(true);
                   load();
                 }}
-                className="rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1.5 font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-colors"
+                className="flex items-center gap-1.5 rounded-lg border border-hairline bg-surface px-3 py-1.5 text-xs font-medium text-ink-2 shadow-sm transition-colors hover:bg-surface-2 hover:text-ink sm:text-sm"
               >
+                <RefreshIcon spinning={loading} />
                 Refresh
               </button>
             </div>
           </div>
         </div>
-      </div>
+      </header>
 
-      <div className="mx-auto w-full max-w-[1600px] px-3 sm:px-6 py-4 space-y-4">
+      <main className="mx-auto w-full max-w-[1600px] space-y-4 px-3 py-4 sm:px-6">
         <MarketSummary stocks={stocks} />
 
         {stillFilling && (
-          <div className="rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40 px-3 py-2">
-            <div className="flex items-center justify-between text-xs sm:text-sm text-blue-800 dark:text-blue-300 mb-1.5">
+          <div className="rounded-xl border border-hairline bg-surface px-4 py-2.5 shadow-sm">
+            <div className="mb-1.5 flex items-center justify-between text-xs text-ink-2 sm:text-sm">
               <span>
                 {totalCount === 0
                   ? "Fetching PSX symbol list…"
                   : `Loading ${scopeLabel} in the background — ${loadedCount} of ${totalCount} (${fillPercent}%)`}
               </span>
             </div>
-            <div className="h-1.5 w-full rounded-full bg-blue-100 dark:bg-blue-900 overflow-hidden">
+            <div className="h-1 w-full overflow-hidden rounded-full bg-surface-2">
               <div
-                className="h-full bg-blue-500 transition-all duration-500"
+                className="h-full rounded-full bg-accent transition-all duration-500"
                 style={{ width: `${totalCount === 0 ? 5 : fillPercent}%` }}
               />
             </div>
@@ -221,46 +294,61 @@ export default function Home() {
         )}
 
         {error && (
-          <p className="rounded-xl bg-red-50 dark:bg-red-950 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+          <p
+            className="rounded-xl border px-4 py-2.5 text-sm"
+            style={{
+              borderColor: "color-mix(in srgb, var(--down) 30%, transparent)",
+              backgroundColor: "color-mix(in srgb, var(--down) 8%, var(--surface))",
+              color: "var(--down)",
+            }}
+          >
             {error}
           </p>
         )}
 
-        {/* Search + quick filters */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
-          <input
-            type="text"
-            placeholder="Search symbol or name…"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="w-full sm:w-64 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <div className="flex flex-wrap gap-1.5">
-            {visibleFilters.map((f) => {
-              const active = quickFilter === f.key;
-              return (
-                <button
-                  key={f.key}
-                  onClick={() => handleQuickFilter(f.key)}
-                  title={f.hint}
-                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-                    active
-                      ? "bg-blue-600 border-blue-600 text-white"
-                      : "border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                  }`}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
+        {/* Search + quick filters + threshold legend */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+            <label className="relative block w-full sm:w-64">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-3">
+                <SearchIcon />
+              </span>
+              <input
+                type="text"
+                placeholder="Search symbol or name…"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full rounded-lg border border-hairline bg-surface py-1.5 pl-9 pr-3 text-sm text-ink shadow-sm outline-none placeholder:text-ink-3 focus:border-accent/50 focus:ring-2 focus:ring-accent/25"
+              />
+            </label>
+            <div className="flex w-fit gap-0.5 rounded-lg bg-surface-2 p-0.5">
+              {visibleFilters.map((f) => {
+                const active = quickFilter === f.key;
+                return (
+                  <button
+                    key={f.key}
+                    onClick={() => handleQuickFilter(f.key)}
+                    title={f.hint}
+                    className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                      active
+                        ? "bg-surface text-ink shadow-sm"
+                        : "text-ink-3 hover:text-ink-2"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
+          <ThresholdLegend />
         </div>
 
         {loading ? (
-          <p className="text-sm text-zinc-500 py-6 text-center">Loading…</p>
+          <p className="py-8 text-center text-sm text-ink-3">Loading…</p>
         ) : (
           <StocksTable
             stocks={pageItems}
@@ -278,19 +366,19 @@ export default function Home() {
           <div className="flex justify-center">
             <button
               onClick={handleLoadMore}
-              className="rounded-lg border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+              className="rounded-lg border border-accent/30 bg-accent-soft px-4 py-2 text-sm font-medium text-accent transition-colors hover:border-accent/50"
             >
               Load all other PSX stocks ({restTotal} more)
             </button>
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs sm:text-sm text-zinc-500">
+        <div className="flex flex-col gap-2 pb-4 text-xs text-ink-3 sm:flex-row sm:items-center sm:justify-between sm:text-sm">
           <span>
             {sorted.length} stocks ({scope === "all" ? "all PSX" : usingFallback ? "top 100" : "KSE-100"})
             {" — "}page {currentPage} of {totalPages}
             {!stillFilling && failedSymbols > 0 && (
-              <span className="text-amber-600 dark:text-amber-500">
+              <span style={{ color: "var(--warning)" }}>
                 {" "}
                 · {failedSymbols} symbol{failedSymbols === 1 ? "" : "s"} unavailable
                 (PSX feed error) — will retry on next refresh
@@ -306,7 +394,7 @@ export default function Home() {
                   setPageSize(Number(e.target.value));
                   setPage(1);
                 }}
-                className="rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1"
+                className="rounded-md border border-hairline bg-surface px-2 py-1 text-ink-2"
               >
                 {PAGE_SIZE_OPTIONS.map((size) => (
                   <option key={size} value={size}>
@@ -319,21 +407,21 @@ export default function Home() {
               <button
                 disabled={currentPage <= 1}
                 onClick={() => setPage((p) => p - 1)}
-                className="rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1 disabled:opacity-40"
+                className="rounded-md border border-hairline bg-surface px-3 py-1 text-ink-2 transition-colors hover:bg-surface-2 disabled:opacity-40 disabled:hover:bg-surface"
               >
                 Previous
               </button>
               <button
                 disabled={currentPage >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
-                className="rounded-md border border-zinc-300 dark:border-zinc-700 px-3 py-1 disabled:opacity-40"
+                className="rounded-md border border-hairline bg-surface px-3 py-1 text-ink-2 transition-colors hover:bg-surface-2 disabled:opacity-40 disabled:hover:bg-surface"
               >
                 Next
               </button>
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
