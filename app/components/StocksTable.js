@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useState } from "react";
 import RSIChart from "./RSIChart";
 import { StarIcon } from "./TopBar";
+import { RSI_PERIODS } from "@/lib/rsi";
 function tradingViewUrl(symbol) {
   return `https://www.tradingview.com/chart/?symbol=PSX:${encodeURIComponent(symbol)}`;
 }
@@ -114,6 +115,48 @@ const SIGNAL_RULE =
   "fixed rule on daily candles, independent of the RSI/Interval selected above";
 const EXIT_PLAN = "Exit: daily RSI(14) back above ~50, +5–8% target, or ~10 sessions — whichever first";
 
+/**
+ * A reading of the RSI the user is CURRENTLY viewing (selected period ×
+ * interval) for one stock — recomputed whenever either dropdown changes.
+ * Complements the fixed screener rule rather than replacing it.
+ */
+function viewInsight(value, periodConfig, interval) {
+  if (value === null || value === undefined) return null;
+  const { period, oversold, overbought, exit, holdCandles } = periodConfig;
+  const v = Number(value).toFixed(1);
+  const name = `RSI(${period})`;
+  const candles = `${interval.label} candles`;
+
+  if (value <= oversold) {
+    return {
+      tone: "var(--up-text)",
+      text: `${name} is ${v} on ${candles} — oversold (≤ ${oversold}). Dip-entry zone: exit when ${name} recovers above ~${exit}, on a +5–8% gain, or after ~${holdCandles} candles — whichever first.`,
+    };
+  }
+  if (value <= oversold + 5) {
+    return {
+      tone: "var(--up-text)",
+      text: `${name} is ${v} on ${candles} — approaching oversold (≤ ${oversold}). Watch for the dip to complete before entering.`,
+    };
+  }
+  if (value >= overbought) {
+    return {
+      tone: "var(--down)",
+      text: `${name} is ${v} on ${candles} — overbought (≥ ${overbought}). Take-profit zone; avoid fresh entries until it cools back under ~${exit}.`,
+    };
+  }
+  if (value >= overbought - 5) {
+    return {
+      tone: "var(--down)",
+      text: `${name} is ${v} on ${candles} — approaching overbought (≥ ${overbought}). If holding, tighten the exit.`,
+    };
+  }
+  return {
+    tone: "var(--ink-3)",
+    text: `${name} is ${v} on ${candles} — neutral. No edge here; a dip entry wants ≤ ${oversold}.`,
+  };
+}
+
 function BuySignalTag() {
   return (
     <span
@@ -155,6 +198,9 @@ function ExpandedChart({ stock, interval, period, thresholds }) {
   const [history, setHistory] = useState(null);
   const [failed, setFailed] = useState(false);
 
+  const periodConfig = RSI_PERIODS.find((p) => p.period === period) ?? RSI_PERIODS[0];
+  const insight = viewInsight(stock.rsi?.[period]?.[interval.key], periodConfig, interval);
+
   useEffect(() => {
     let cancelled = false;
     setHistory(null);
@@ -191,10 +237,15 @@ function ExpandedChart({ stock, interval, period, thresholds }) {
           Open on TradingView ↗
         </a>
       </div>
+      {insight && (
+        <p className="mb-1 text-xs" style={{ color: insight.tone }}>
+          {insight.text}
+        </p>
+      )}
       {stock.buySignal && (
-        <p className="mb-1.5 text-xs" style={{ color: "var(--up-text)" }}>
-          Buy signal active ({SIGNAL_RULE}) — entry: daily RSI(14) ≤ 35 &amp; RSI(2) ≤ 10 ·{" "}
-          {EXIT_PLAN}.
+        <p className="mb-1.5 text-[11px] text-ink-3">
+          Screener buy signal also active ({SIGNAL_RULE}): entry daily RSI(14) ≤ 35 &amp;
+          RSI(2) ≤ 10 · {EXIT_PLAN}.
         </p>
       )}
       {failed ? (
