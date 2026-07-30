@@ -55,11 +55,16 @@ const THEMES = {
   },
 };
 
-function formatDate(ts) {
-  return new Date(ts).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-  });
+function makeDateFormatter(history) {
+  const span =
+    history.length > 1 ? history[history.length - 1].date - history[0].date : 0;
+  // Beyond a year of span (weekly/monthly intervals), day-of-month is noise
+  // and the year is the disambiguator.
+  const opts =
+    span > 370 * 86400000
+      ? { month: "short", year: "2-digit" }
+      : { day: "2-digit", month: "short" };
+  return (ts) => new Date(ts).toLocaleDateString("en-GB", opts);
 }
 
 function ChartTooltip({ active, payload, label, theme }) {
@@ -81,14 +86,13 @@ function ChartTooltip({ active, payload, label, theme }) {
   );
 }
 
-export default function RSIChart({ history, period = 14, thresholds = { oversold: 30, overbought: 70 } }) {
+export default function RSIChart({ history, thresholds = { oversold: 30, overbought: 70 } }) {
   const dark = useDarkScheme();
   const theme = dark ? THEMES.dark : THEMES.light;
 
-  const data = (history || [])
-    .map((p) => ({ date: formatDate(p.date), rsi: p.rsi?.[period] }))
-    .filter((p) => p.rsi !== null && p.rsi !== undefined)
-    .map((p) => ({ date: p.date, rsi: Number(p.rsi.toFixed(2)) }));
+  const points = (history || []).filter((p) => p.rsi !== null && p.rsi !== undefined);
+  const formatDate = makeDateFormatter(points);
+  const data = points.map((p) => ({ date: formatDate(p.date), rsi: Number(p.rsi) }));
 
   if (data.length === 0) {
     return <p className="py-4 text-sm text-ink-3">Not enough history to plot RSI yet.</p>;

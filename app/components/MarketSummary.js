@@ -1,6 +1,6 @@
 "use client";
 
-const RSI_TFS = ["daily", "weekly", "monthly"];
+import { RSI_OVERSOLD, RSI_OVERBOUGHT } from "@/lib/rsi";
 
 function Stat({ label, value, dot, hint }) {
   return (
@@ -26,26 +26,17 @@ function Stat({ label, value, dot, hint }) {
 }
 
 /**
- * Market-breadth summary computed from every currently-loaded stock (not just
- * the visible page). A stock counts as overbought/oversold if ANY of its
- * three timeframes (daily/weekly/monthly) crosses the threshold — matching
- * the table, where a signal in any column flags that stock. The distribution
- * bar below the stats mirrors the RSI axis: oversold (low) on the left,
- * overbought (high) on the right.
+ * Market-breadth summary computed from every currently-loaded stock (not
+ * just the visible page), at the currently-selected chart interval. The
+ * distribution bar below the stats mirrors the RSI axis: oversold (low) on
+ * the left, overbought (high) on the right.
  */
-export default function MarketSummary({ stocks, period, thresholds }) {
-  const { oversold: osLimit, overbought: obLimit } = thresholds;
-  const values = (s) =>
-    RSI_TFS.map((tf) => s.rsi?.[period]?.[tf]).filter((v) => v !== null && v !== undefined);
-  const withRsi = stocks.filter((s) => values(s).length > 0);
-  const overbought = withRsi.filter((s) => values(s).some((v) => v >= obLimit)).length;
-  const oversold = withRsi.filter((s) => values(s).some((v) => v <= osLimit)).length;
-  // Computed independently (not total - overbought - oversold): a stock with
-  // e.g. Daily=25 and Weekly=75 counts in both extremes at once, so a plain
-  // subtraction could go negative.
-  const neutral = withRsi.filter(
-    (s) => !values(s).some((v) => v >= obLimit) && !values(s).some((v) => v <= osLimit)
-  ).length;
+export default function MarketSummary({ stocks, interval }) {
+  const value = (s) => s.rsi?.[interval.key];
+  const withRsi = stocks.filter((s) => value(s) !== null && value(s) !== undefined);
+  const overbought = withRsi.filter((s) => value(s) >= RSI_OVERBOUGHT).length;
+  const oversold = withRsi.filter((s) => value(s) <= RSI_OVERSOLD).length;
+  const neutral = withRsi.length - overbought - oversold;
 
   const denom = oversold + neutral + overbought;
   const segments = [
@@ -64,13 +55,13 @@ export default function MarketSummary({ stocks, period, thresholds }) {
           label="Oversold"
           value={oversold}
           dot="var(--up)"
-          hint={`RSI ≤ ${osLimit} · any timeframe`}
+          hint={`RSI ≤ ${RSI_OVERSOLD} · ${interval.label}`}
         />
         <Stat
           label="Overbought"
           value={overbought}
           dot="var(--down)"
-          hint={`RSI ≥ ${obLimit} · any timeframe`}
+          hint={`RSI ≥ ${RSI_OVERBOUGHT} · ${interval.label}`}
         />
         <Stat label="Neutral" value={neutral} />
       </div>

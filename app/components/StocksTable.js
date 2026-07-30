@@ -1,34 +1,26 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useEffect, useState } from "react";
 import RSIChart from "./RSIChart";
-import { RSI_TIMEFRAMES } from "@/lib/rsi";
+import { StarIcon } from "./TopBar";
+import { RSI_OVERSOLD, RSI_OVERBOUGHT } from "@/lib/rsi";
 
 function tradingViewUrl(symbol) {
   return `https://www.tradingview.com/chart/?symbol=PSX:${encodeURIComponent(symbol)}`;
 }
 
-// Timeframe columns; each cell reads the currently-selected period's value
-// from the stock's `rsi[period][tf]` grid. The sort keys stay stable across
-// period switches.
-const RSI_COLUMNS = RSI_TIMEFRAMES.map((o) => ({
-  key: o.key,
-  tf: o.granularity === "day" ? "daily" : o.granularity === "week" ? "weekly" : "monthly",
-  label: o.label,
-}));
-
-const COLUMN_COUNT = 4 + RSI_COLUMNS.length; // symbol, name, price, RSI cols, volume
+const COLUMN_COUNT = 6; // star, symbol, name, price, RSI, volume
+const THRESHOLDS = { oversold: RSI_OVERSOLD, overbought: RSI_OVERBOUGHT };
 
 // A value's zone decides the meter-fill color: the two extremes wear the
 // reserved status hues (oversold = green "buy" signal, overbought = red),
 // everything in between the neutral accent. The number itself always stays
 // in ink — the colored meter beside it carries the signal, and the fill's
 // *position* on the 0–100 track repeats it spatially, so color is never the
-// only channel. Thresholds come from the selected period (e.g. 30/70 for
-// RSI(14), 10/90 for RSI(2)).
-function rsiZone(value, thresholds) {
-  if (value >= thresholds.overbought) return "overbought";
-  if (value <= thresholds.oversold) return "oversold";
+// only channel.
+function rsiZone(value) {
+  if (value >= RSI_OVERBOUGHT) return "overbought";
+  if (value <= RSI_OVERSOLD) return "oversold";
   return "neutral";
 }
 
@@ -38,15 +30,15 @@ const ZONE_FILL = {
   neutral: "var(--accent)",
 };
 
-function RSICell({ value, thresholds, align = "center" }) {
+function RSICell({ value, align = "center" }) {
   if (value === null || value === undefined) {
     return <span className="text-sm text-ink-3">—</span>;
   }
-  const zone = rsiZone(value, thresholds);
+  const zone = rsiZone(value);
   const extreme = zone !== "neutral";
   return (
     <span
-      className={`inline-flex w-14 flex-col gap-[5px] ${
+      className={`inline-flex w-20 flex-col gap-[5px] ${
         align === "center" ? "items-center" : "items-end"
       }`}
       title={zone === "neutral" ? undefined : zone}
@@ -69,11 +61,11 @@ function RSICell({ value, thresholds, align = "center" }) {
         {/* oversold / overbought threshold ticks over the track */}
         <span
           className="absolute top-[-2px] h-[7px] w-px bg-ink/20"
-          style={{ left: `${thresholds.oversold}%` }}
+          style={{ left: `${RSI_OVERSOLD}%` }}
         />
         <span
           className="absolute top-[-2px] h-[7px] w-px bg-ink/20"
-          style={{ left: `${thresholds.overbought}%` }}
+          style={{ left: `${RSI_OVERBOUGHT}%` }}
         />
       </span>
     </span>
@@ -117,12 +109,53 @@ function Kse100Tag() {
   );
 }
 
-function ExpandedChart({ stock, period, thresholds }) {
+function StarButton({ starred, onToggle, symbol }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(symbol);
+      }}
+      title={starred ? "Remove from watchlist" : "Add to watchlist"}
+      aria-label={`${starred ? "Remove" : "Add"} ${symbol} ${starred ? "from" : "to"} watchlist`}
+      className={`rounded-md p-1 transition-colors ${
+        starred ? "text-warning" : "text-ink-3/50 hover:text-ink-2"
+      }`}
+    >
+      <StarIcon filled={starred} />
+    </button>
+  );
+}
+
+// The chart series is fetched on demand per symbol + interval (the table
+// payload doesn't carry chart history), so expanding a row shows a brief
+// loading state, and switching interval refetches.
+function ExpandedChart({ stock, interval }) {
+  const [history, setHistory] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHistory(null);
+    setFailed(false);
+    fetch(`/api/history?symbol=${encodeURIComponent(stock.symbol)}&interval=${interval.key}`)
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((json) => {
+        if (!cancelled) setHistory(json.history);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stock.symbol, interval.key]);
+
   return (
     <>
       <div className="mb-1 flex items-center justify-between">
         <p className="text-xs text-ink-3">
-          {stock.sector} — daily RSI({period}) trend for{" "}
+          {stock.sector} — RSI(14) · {interval.label} candles ·{" "}
           <span className="font-medium text-ink-2">{stock.symbol}</span>
         </p>
         <a
@@ -135,7 +168,13 @@ function ExpandedChart({ stock, period, thresholds }) {
           Open on TradingView ↗
         </a>
       </div>
-      <RSIChart history={stock.history} period={period} thresholds={thresholds} />
+      {failed ? (
+        <p className="py-4 text-sm text-ink-3">Couldn&apos;t load the RSI trend — try again.</p>
+      ) : history === null ? (
+        <p className="py-4 text-sm text-ink-3">Loading RSI trend…</p>
+      ) : (
+        <RSIChart history={history} thresholds={THRESHOLDS} />
+      )}
     </>
   );
 }
@@ -146,14 +185,17 @@ const sortableCell = `${headerCell} cursor-pointer transition-colors hover:text-
 
 export default function StocksTable({
   stocks,
-  period,
-  thresholds,
+  interval,
   sortKey,
   sortDir,
   onSort,
   expandedSymbol,
   onToggleExpand,
+  watchlist,
+  onToggleWatch,
 }) {
+  const isStarred = (symbol) => watchlist.includes(symbol);
+
   return (
     <>
       {/* Desktop / tablet: fixed-width table, sized to never need horizontal
@@ -163,16 +205,16 @@ export default function StocksTable({
         <div className="max-h-[70vh] overflow-y-auto">
           <table className="w-full table-fixed text-xs md:text-sm">
             <colgroup>
+              <col style={{ width: "4%" }} />
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "34%" }} />
               <col style={{ width: "12%" }} />
-              <col style={{ width: "22%" }} />
-              <col style={{ width: "9%" }} />
-              {RSI_COLUMNS.map((c) => (
-                <col key={c.key} style={{ width: `${39 / RSI_COLUMNS.length}%` }} />
-              ))}
-              <col style={{ width: "18%" }} />
+              <col style={{ width: "17%" }} />
+              <col style={{ width: "20%" }} />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-surface/95 backdrop-blur supports-[backdrop-filter]:bg-surface/85">
               <tr className="border-b border-grid">
+                <th className={headerCell} aria-label="Watchlist" />
                 <th onClick={() => onSort("symbol")} className={`${sortableCell} text-left`}>
                   Symbol
                   <SortIndicator active={sortKey === "symbol"} dir={sortDir} />
@@ -182,17 +224,14 @@ export default function StocksTable({
                   Price
                   <SortIndicator active={sortKey === "price"} dir={sortDir} />
                 </th>
-                {RSI_COLUMNS.map((c) => (
-                  <th
-                    key={c.key}
-                    onClick={() => onSort(c.key)}
-                    title={`RSI(${period}) — ${c.label}`}
-                    className={`${sortableCell} text-center`}
-                  >
-                    {c.label}
-                    <SortIndicator active={sortKey === c.key} dir={sortDir} />
-                  </th>
-                ))}
+                <th
+                  onClick={() => onSort("rsi")}
+                  title={`RSI(14) on ${interval.label} candles`}
+                  className={`${sortableCell} text-center`}
+                >
+                  RSI(14) · {interval.key}
+                  <SortIndicator active={sortKey === "rsi"} dir={sortDir} />
+                </th>
                 <th
                   onClick={() => onSort("volume")}
                   title="Shares traded today"
@@ -212,6 +251,13 @@ export default function StocksTable({
                       expandedSymbol === stock.symbol ? "bg-surface-2/60" : ""
                     }`}
                   >
+                    <td className="px-2 py-2 text-center">
+                      <StarButton
+                        starred={isStarred(stock.symbol)}
+                        onToggle={onToggleWatch}
+                        symbol={stock.symbol}
+                      />
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2.5 text-[13px] font-semibold text-ink">
                       {stock.symbol}
                       {stock.isKse100 && <Kse100Tag />}
@@ -221,15 +267,14 @@ export default function StocksTable({
                       title={`${stock.name} — ${stock.sector}`}
                     >
                       {stock.name}
+                      <span className="hidden text-ink-3 md:inline"> · {stock.sector}</span>
                     </td>
                     <td className="px-3 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink">
                       {formatPrice(stock.price)}
                     </td>
-                    {RSI_COLUMNS.map((c) => (
-                      <td key={c.key} className="px-2 py-2.5 text-center">
-                        <RSICell value={stock.rsi?.[period]?.[c.tf]} thresholds={thresholds} />
-                      </td>
-                    ))}
+                    <td className="px-2 py-2.5 text-center">
+                      <RSICell value={stock.rsi?.[interval.key]} />
+                    </td>
                     <td className="px-3 py-2.5 text-right font-mono text-[13px] tabular-nums text-ink-3">
                       {formatVolume(stock.volume)}
                     </td>
@@ -237,7 +282,7 @@ export default function StocksTable({
                   {expandedSymbol === stock.symbol && (
                     <tr className="border-t border-grid/60 bg-page/60">
                       <td colSpan={COLUMN_COUNT} className="px-4 py-3">
-                        <ExpandedChart stock={stock} period={period} thresholds={thresholds} />
+                        <ExpandedChart stock={stock} interval={interval} />
                       </td>
                     </tr>
                   )}
@@ -262,18 +307,25 @@ export default function StocksTable({
             key={stock.symbol}
             className="overflow-hidden rounded-xl border border-hairline bg-surface shadow-sm"
           >
-            <button
+            <div
               onClick={() => onToggleExpand(stock.symbol)}
-              className="w-full text-left active:bg-surface-2/60"
+              className="w-full cursor-pointer text-left active:bg-surface-2/60"
             >
               <div className="flex items-center justify-between gap-2 px-3 py-2.5">
-                <div className="min-w-0">
-                  <div className="truncate font-semibold text-ink">
-                    {stock.symbol}
-                    {stock.isKse100 && <Kse100Tag />}{" "}
-                    <span className="text-xs font-normal text-ink-3">{stock.name}</span>
+                <div className="flex min-w-0 items-center gap-1">
+                  <StarButton
+                    starred={isStarred(stock.symbol)}
+                    onToggle={onToggleWatch}
+                    symbol={stock.symbol}
+                  />
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold text-ink">
+                      {stock.symbol}
+                      {stock.isKse100 && <Kse100Tag />}{" "}
+                      <span className="text-xs font-normal text-ink-3">{stock.name}</span>
+                    </div>
+                    <div className="truncate text-xs text-ink-3">{stock.sector}</div>
                   </div>
-                  <div className="truncate text-xs text-ink-3">{stock.sector}</div>
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="font-mono text-sm tabular-nums text-ink">
@@ -282,20 +334,16 @@ export default function StocksTable({
                   <div className="text-xs text-ink-3">Vol {formatVolume(stock.volume)}</div>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-1.5 px-3 pb-3 text-center text-xs">
-                {RSI_COLUMNS.map((c) => (
-                  <div key={c.key}>
-                    <div className="mb-1 text-[10px] uppercase tracking-wider text-ink-3">
-                      {c.label}
-                    </div>
-                    <RSICell value={stock.rsi?.[period]?.[c.tf]} thresholds={thresholds} />
-                  </div>
-                ))}
+              <div className="flex items-center justify-between px-3 pb-3">
+                <span className="text-[10px] uppercase tracking-wider text-ink-3">
+                  RSI(14) · {interval.label}
+                </span>
+                <RSICell value={stock.rsi?.[interval.key]} align="end" />
               </div>
-            </button>
+            </div>
             {expandedSymbol === stock.symbol && (
               <div className="border-t border-hairline bg-page/60 px-3 py-2">
-                <ExpandedChart stock={stock} period={period} thresholds={thresholds} />
+                <ExpandedChart stock={stock} interval={interval} />
               </div>
             )}
           </div>
