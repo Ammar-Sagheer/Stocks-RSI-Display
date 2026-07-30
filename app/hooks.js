@@ -32,10 +32,15 @@ export function useStocks() {
   const timerRef = useRef(null);
   const cancelledRef = useRef(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     try {
-      const url = wantAllRef.current ? "/api/stocks?scope=all" : "/api/stocks";
-      const res = await fetch(url);
+      const params = new URLSearchParams();
+      if (wantAllRef.current) params.set("scope", "all");
+      // force = the user pressed Refresh: the server re-fetches live prices
+      // from PSX's market-watch page and recomputes RSI before responding.
+      if (force) params.set("refresh", "1");
+      const qs = params.toString();
+      const res = await fetch(`/api/stocks${qs ? `?${qs}` : ""}`);
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Failed to load data");
       setData(json);
@@ -80,7 +85,7 @@ export function useStocks() {
 
   const refresh = useCallback(() => {
     setLoading(true);
-    load();
+    load(true);
   }, [load]);
 
   return { ...data, loading, error, loadMore, refresh };
