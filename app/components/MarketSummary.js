@@ -1,6 +1,6 @@
 "use client";
 
-const RSI_KEYS = ["rsiDaily", "rsiWeekly", "rsiMonthly"];
+const RSI_TFS = ["daily", "weekly", "monthly"];
 
 function Stat({ label, value, dot, hint }) {
   return (
@@ -33,16 +33,18 @@ function Stat({ label, value, dot, hint }) {
  * bar below the stats mirrors the RSI axis: oversold (low) on the left,
  * overbought (high) on the right.
  */
-export default function MarketSummary({ stocks }) {
-  const values = (s) => RSI_KEYS.map((k) => s[k]).filter((v) => v !== null && v !== undefined);
+export default function MarketSummary({ stocks, period, thresholds }) {
+  const { oversold: osLimit, overbought: obLimit } = thresholds;
+  const values = (s) =>
+    RSI_TFS.map((tf) => s.rsi?.[period]?.[tf]).filter((v) => v !== null && v !== undefined);
   const withRsi = stocks.filter((s) => values(s).length > 0);
-  const overbought = withRsi.filter((s) => values(s).some((v) => v >= 70)).length;
-  const oversold = withRsi.filter((s) => values(s).some((v) => v <= 30)).length;
+  const overbought = withRsi.filter((s) => values(s).some((v) => v >= obLimit)).length;
+  const oversold = withRsi.filter((s) => values(s).some((v) => v <= osLimit)).length;
   // Computed independently (not total - overbought - oversold): a stock with
   // e.g. Daily=25 and Weekly=75 counts in both extremes at once, so a plain
   // subtraction could go negative.
   const neutral = withRsi.filter(
-    (s) => !values(s).some((v) => v >= 70) && !values(s).some((v) => v <= 30)
+    (s) => !values(s).some((v) => v >= obLimit) && !values(s).some((v) => v <= osLimit)
   ).length;
 
   const denom = oversold + neutral + overbought;
@@ -62,13 +64,13 @@ export default function MarketSummary({ stocks }) {
           label="Oversold"
           value={oversold}
           dot="var(--up)"
-          hint="RSI ≤ 30 · any timeframe"
+          hint={`RSI ≤ ${osLimit} · any timeframe`}
         />
         <Stat
           label="Overbought"
           value={overbought}
           dot="var(--down)"
-          hint="RSI ≥ 70 · any timeframe"
+          hint={`RSI ≥ ${obLimit} · any timeframe`}
         />
         <Stat label="Neutral" value={neutral} />
       </div>

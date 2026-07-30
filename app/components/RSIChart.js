@@ -81,13 +81,14 @@ function ChartTooltip({ active, payload, label, theme }) {
   );
 }
 
-export default function RSIChart({ history }) {
+export default function RSIChart({ history, period = 14, thresholds = { oversold: 30, overbought: 70 } }) {
   const dark = useDarkScheme();
   const theme = dark ? THEMES.dark : THEMES.light;
 
   const data = (history || [])
+    .map((p) => ({ date: formatDate(p.date), rsi: p.rsi?.[period] }))
     .filter((p) => p.rsi !== null && p.rsi !== undefined)
-    .map((p) => ({ date: formatDate(p.date), rsi: Number(p.rsi.toFixed(2)) }));
+    .map((p) => ({ date: p.date, rsi: Number(p.rsi.toFixed(2)) }));
 
   if (data.length === 0) {
     return <p className="py-4 text-sm text-ink-3">Not enough history to plot RSI yet.</p>;
@@ -108,9 +109,24 @@ export default function RSIChart({ history }) {
           {/* The 30–70 neutral band, washed just off the surface, plus dashed
               threshold rules in the status hues (dashed = a threshold, the one
               place dashing means something). */}
-          <ReferenceArea y1={30} y2={70} fill={theme.band} strokeOpacity={0} />
-          <ReferenceLine y={70} stroke={theme.down} strokeDasharray="4 4" strokeOpacity={0.55} />
-          <ReferenceLine y={30} stroke={theme.up} strokeDasharray="4 4" strokeOpacity={0.55} />
+          <ReferenceArea
+            y1={thresholds.oversold}
+            y2={thresholds.overbought}
+            fill={theme.band}
+            strokeOpacity={0}
+          />
+          <ReferenceLine
+            y={thresholds.overbought}
+            stroke={theme.down}
+            strokeDasharray="4 4"
+            strokeOpacity={0.55}
+          />
+          <ReferenceLine
+            y={thresholds.oversold}
+            stroke={theme.up}
+            strokeDasharray="4 4"
+            strokeOpacity={0.55}
+          />
           <XAxis
             dataKey="date"
             tick={{ fontSize: 10, fill: theme.axis }}
@@ -121,7 +137,7 @@ export default function RSIChart({ history }) {
           />
           <YAxis
             domain={[0, 100]}
-            ticks={[0, 30, 50, 70, 100]}
+            ticks={[0, thresholds.oversold, 50, thresholds.overbought, 100]}
             tick={{ fontSize: 10, fill: theme.axis }}
             axisLine={false}
             tickLine={false}

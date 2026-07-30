@@ -3,22 +3,35 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import StocksTable from "./components/StocksTable";
 import MarketSummary from "./components/MarketSummary";
+import { RSI_PERIODS } from "@/lib/rsi";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_PERIOD = 14;
 const IDLE_POLL_MS = 5 * 60 * 1000;
 const LOADING_POLL_MS = 2000;
 
 const FILTERS = [
   { key: "all", label: "All" },
-  { key: "oversold", label: "Oversold", hint: "RSI ≤ 30 on any timeframe" },
-  { key: "overbought", label: "Overbought", hint: "RSI ≥ 70 on any timeframe" },
+  { key: "oversold", label: "Oversold" },
+  { key: "overbought", label: "Overbought" },
   { key: "kse100", label: "KSE-100" },
 ];
 
-const RSI_TIMEFRAME_KEYS = ["rsiDaily", "rsiWeekly", "rsiMonthly"];
-function rsiValues(stock) {
-  return RSI_TIMEFRAME_KEYS.map((k) => stock[k]).filter((v) => v !== null && v !== undefined);
+const RSI_TFS = ["daily", "weekly", "monthly"];
+function rsiValues(stock, period) {
+  return RSI_TFS.map((tf) => stock.rsi?.[period]?.[tf]).filter(
+    (v) => v !== null && v !== undefined
+  );
+}
+
+// The RSI sort columns keep stable keys across period switches; everything
+// else sorts on the stock record's own field.
+const TF_BY_SORT_KEY = { rsiDaily: "daily", rsiWeekly: "weekly", rsiMonthly: "monthly" };
+function sortValue(stock, key, period) {
+  const tf = TF_BY_SORT_KEY[key];
+  if (tf) return stock.rsi?.[period]?.[tf] ?? null;
+  return stock[key];
 }
 
 function BrandMark() {
@@ -76,16 +89,16 @@ function SearchIcon() {
   );
 }
 
-function ThresholdLegend() {
+function ThresholdLegend({ thresholds }) {
   return (
     <div className="hidden items-center gap-3 text-[11px] text-ink-3 lg:flex">
       <span className="flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--up)" }} />
-        ≤ 30 oversold
+        ≤ {thresholds.oversold} oversold
       </span>
       <span className="flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--down)" }} />
-        ≥ 70 overbought
+        ≥ {thresholds.overbought} overbought
       </span>
     </div>
   );
@@ -110,6 +123,14 @@ export default function Home() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [expandedSymbol, setExpandedSymbol] = useState(null);
+  const [period, setPeriod] = useState(DEFAULT_PERIOD);
+
+  const periodConfig =
+    RSI_PERIODS.find((p) => p.period === period) ?? RSI_PERIODS[0];
+  const thresholds = {
+    oversold: periodConfig.oversold,
+    overbought: periodConfig.overbought,
+  };
 
   // Read by the polling loop (whose closure is fixed on first render), so
   // clicking "Load more" switches every subsequent poll to the full scope.
@@ -193,18 +214,21 @@ export default function Home() {
       if (q && !s.symbol.toLowerCase().includes(q) && !(s.name || "").toLowerCase().includes(q)) {
         return false;
       }
-      if (quickFilter === "oversold") return rsiValues(s).some((v) => v <= 30);
-      if (quickFilter === "overbought") return rsiValues(s).some((v) => v >= 70);
+      if (quickFilter === "oversold")
+        return rsiValues(s, period).some((v) => v <= thresholds.oversold);
+      if (quickFilter === "overbought")
+        return rsiValues(s, period).some((v) => v >= thresholds.overbought);
       if (quickFilter === "kse100") return s.isKse100;
       return true;
     });
-  }, [stocks, search, quickFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stocks, search, quickFilter, period]);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
     copy.sort((a, b) => {
-      const av = a[sortKey];
-      const bv = b[sortKey];
+      const av = sortValue(a, sortKey, period);
+      const bv = sortValue(b, sortKey, period);
       if (av === null || av === undefined) return 1;
       if (bv === null || bv === undefined) return -1;
       if (typeof av === "string") {
@@ -213,7 +237,7 @@ export default function Home() {
       return sortDir === "asc" ? av - bv : bv - av;
     });
     return copy;
-  }, [filtered, sortKey, sortDir]);
+  }, [filtered, sortKey, sortDir, period]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -243,7 +267,7 @@ export default function Home() {
                   PSX RSI Dashboard
                 </h1>
                 <p className="hidden text-[11px] leading-tight text-ink-3 sm:block">
-                  Daily / Weekly / Monthly RSI(14) — matches TradingView timeframes
+                  Daily / Weekly / Monthly RSI({period}) — matches TradingView timeframes
                 </p>
               </div>
             </div>
@@ -273,7 +297,7 @@ export default function Home() {
       </header>
 
       <main className="mx-auto w-full max-w-[1600px] space-y-4 px-3 py-4 sm:px-6">
-        <MarketSummary stocks={stocks} />
+        <MarketSummary stocks={stocks} period={period} thresholds={thresholds} />
 
         {stillFilling && (
           <div className="rounded-xl border border-hairline bg-surface px-4 py-2.5 shadow-sm">
@@ -324,14 +348,40 @@ export default function Home() {
                 className="w-full rounded-lg border border-hairline bg-surface py-1.5 pl-9 pr-3 text-sm text-ink shadow-sm outline-none placeholder:text-ink-3 focus:border-accent/50 focus:ring-2 focus:ring-accent/25"
               />
             </label>
+            {/* RSI look-back period. Shorter periods = faster, wider-threshold
+                signals suited to shorter holds (RSI(2)/RSI(5) for swing entries). */}
+            <label className="flex w-fit items-center gap-1.5 text-xs text-ink-3">
+              Period:
+              <select
+                value={period}
+                onChange={(e) => {
+                  setPeriod(Number(e.target.value));
+                  setPage(1);
+                }}
+                title="RSI look-back period — shorter reacts faster (better for short holds)"
+                className="rounded-lg border border-hairline bg-surface px-2 py-1.5 text-xs font-medium text-ink shadow-sm outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/25"
+              >
+                {RSI_PERIODS.map((p) => (
+                  <option key={p.period} value={p.period}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div className="flex w-fit gap-0.5 rounded-lg bg-surface-2 p-0.5">
               {visibleFilters.map((f) => {
+                const hint =
+                  f.key === "oversold"
+                    ? `RSI(${period}) ≤ ${thresholds.oversold} on any timeframe`
+                    : f.key === "overbought"
+                      ? `RSI(${period}) ≥ ${thresholds.overbought} on any timeframe`
+                      : undefined;
                 const active = quickFilter === f.key;
                 return (
                   <button
                     key={f.key}
                     onClick={() => handleQuickFilter(f.key)}
-                    title={f.hint}
+                    title={hint}
                     className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
                       active
                         ? "bg-surface text-ink shadow-sm"
@@ -344,7 +394,7 @@ export default function Home() {
               })}
             </div>
           </div>
-          <ThresholdLegend />
+          <ThresholdLegend thresholds={thresholds} />
         </div>
 
         {loading ? (
@@ -352,6 +402,8 @@ export default function Home() {
         ) : (
           <StocksTable
             stocks={pageItems}
+            period={period}
+            thresholds={thresholds}
             sortKey={sortKey}
             sortDir={sortDir}
             onSort={handleSort}
