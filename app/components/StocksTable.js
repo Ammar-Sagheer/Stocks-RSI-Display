@@ -107,12 +107,17 @@ function Kse100Tag() {
   );
 }
 
+// The buy/sell rule is a FIXED strategy on daily candles — deliberately
+// independent of whatever RSI period/interval the user is currently viewing,
+// so entries and exits always follow the same rule.
+const SIGNAL_RULE =
+  "fixed rule on daily candles, independent of the RSI/Interval selected above";
 const EXIT_PLAN = "Exit: daily RSI(14) back above ~50, +5–8% target, or ~10 sessions — whichever first";
 
 function BuySignalTag() {
   return (
     <span
-      title={`Swing-entry setup — beaten down (RSI 14) and short-term stretched (RSI 2). ${EXIT_PLAN}.`}
+      title={`Swing-entry setup (${SIGNAL_RULE}): daily RSI(14) ≤ 35 and RSI(2) ≤ 10. ${EXIT_PLAN}.`}
       className="ml-1.5 rounded px-1 py-px align-middle text-[9px] font-semibold tracking-wide"
       style={{
         color: "var(--up-text)",
@@ -188,7 +193,8 @@ function ExpandedChart({ stock, interval, period, thresholds }) {
       </div>
       {stock.buySignal && (
         <p className="mb-1.5 text-xs" style={{ color: "var(--up-text)" }}>
-          Buy signal active — {EXIT_PLAN}.
+          Buy signal active ({SIGNAL_RULE}) — entry: daily RSI(14) ≤ 35 &amp; RSI(2) ≤ 10 ·{" "}
+          {EXIT_PLAN}.
         </p>
       )}
       {failed ? (
