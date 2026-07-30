@@ -3,14 +3,16 @@
 import { useMemo, useState } from "react";
 import StocksTable from "./StocksTable";
 import MarketSummary from "./MarketSummary";
-import { RSI_INTERVALS, RSI_OVERSOLD, RSI_OVERBOUGHT } from "@/lib/rsi";
+import { RSI_INTERVALS, RSI_PERIODS, BUY_SIGNAL } from "@/lib/rsi";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 const DEFAULT_PAGE_SIZE = 25;
 const DEFAULT_INTERVAL = "1D";
+const DEFAULT_PERIOD = 14;
 
 const FILTERS = [
   { key: "all", label: "All" },
+  { key: "signals", label: "Buy signals" },
   { key: "oversold", label: "Oversold" },
   { key: "overbought", label: "Overbought" },
   { key: "kse100", label: "KSE-100" },
@@ -36,16 +38,16 @@ function SearchIcon() {
   );
 }
 
-function ThresholdLegend() {
+function ThresholdLegend({ thresholds }) {
   return (
     <div className="hidden items-center gap-3 text-[11px] text-ink-3 lg:flex">
       <span className="flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--up)" }} />
-        ≤ {RSI_OVERSOLD} oversold
+        ≤ {thresholds.oversold} oversold
       </span>
       <span className="flex items-center gap-1.5">
         <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--down)" }} />
-        ≥ {RSI_OVERBOUGHT} overbought
+        ≥ {thresholds.overbought} overbought
       </span>
     </div>
   );
@@ -69,6 +71,7 @@ export default function StocksView({
   const [search, setSearch] = useState("");
   const [quickFilter, setQuickFilter] = useState("all");
   const [intervalKey, setIntervalKey] = useState(DEFAULT_INTERVAL);
+  const [period, setPeriod] = useState(DEFAULT_PERIOD);
   const [sortKey, setSortKey] = useState("symbol");
   const [sortDir, setSortDir] = useState("asc");
   const [page, setPage] = useState(1);
@@ -77,6 +80,11 @@ export default function StocksView({
 
   const interval =
     RSI_INTERVALS.find((iv) => iv.key === intervalKey) ?? RSI_INTERVALS[0];
+  const periodConfig = RSI_PERIODS.find((p) => p.period === period) ?? RSI_PERIODS[0];
+  const thresholds = {
+    oversold: periodConfig.oversold,
+    overbought: periodConfig.overbought,
+  };
 
   function handleSort(key) {
     if (key === sortKey) {
@@ -94,20 +102,23 @@ export default function StocksView({
       if (q && !s.symbol.toLowerCase().includes(q) && !(s.name || "").toLowerCase().includes(q)) {
         return false;
       }
-      const v = s.rsi?.[interval.key];
-      if (quickFilter === "oversold") return v !== null && v !== undefined && v <= RSI_OVERSOLD;
+      const v = s.rsi?.[period]?.[interval.key];
+      if (quickFilter === "signals") return Boolean(s.buySignal);
+      if (quickFilter === "oversold")
+        return v !== null && v !== undefined && v <= thresholds.oversold;
       if (quickFilter === "overbought")
-        return v !== null && v !== undefined && v >= RSI_OVERBOUGHT;
+        return v !== null && v !== undefined && v >= thresholds.overbought;
       if (quickFilter === "kse100") return s.isKse100;
       return true;
     });
-  }, [stocks, search, quickFilter, interval.key]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stocks, search, quickFilter, interval.key, period]);
 
   const sorted = useMemo(() => {
     const copy = [...filtered];
     copy.sort((a, b) => {
-      const av = sortKey === "rsi" ? (a.rsi?.[interval.key] ?? null) : a[sortKey];
-      const bv = sortKey === "rsi" ? (b.rsi?.[interval.key] ?? null) : b[sortKey];
+      const av = sortKey === "rsi" ? (a.rsi?.[period]?.[interval.key] ?? null) : a[sortKey];
+      const bv = sortKey === "rsi" ? (b.rsi?.[period]?.[interval.key] ?? null) : b[sortKey];
       if (av === null || av === undefined) return 1;
       if (bv === null || bv === undefined) return -1;
       if (typeof av === "string") {
@@ -116,7 +127,7 @@ export default function StocksView({
       return sortDir === "asc" ? av - bv : bv - av;
     });
     return copy;
-  }, [filtered, sortKey, sortDir, interval.key]);
+  }, [filtered, sortKey, sortDir, interval.key, period]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -126,7 +137,12 @@ export default function StocksView({
 
   return (
     <>
-      <MarketSummary stocks={stocks} interval={interval} />
+      <MarketSummary
+        stocks={stocks}
+        period={period}
+        interval={interval}
+        thresholds={thresholds}
+      />
 
       {/* Search + interval + quick filters + threshold legend */}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
@@ -145,6 +161,26 @@ export default function StocksView({
               }}
               className="w-full rounded-lg border border-hairline bg-surface py-1.5 pl-9 pr-3 text-sm text-ink shadow-sm outline-none placeholder:text-ink-3 focus:border-accent/50 focus:ring-2 focus:ring-accent/25"
             />
+          </label>
+          {/* RSI look-back period — shorter round-trips oversold→overbought
+              in days instead of months, suiting 1–2 week holds. */}
+          <label className="flex w-fit items-center gap-1.5 text-xs text-ink-3">
+            RSI:
+            <select
+              value={period}
+              onChange={(e) => {
+                setPeriod(Number(e.target.value));
+                setPage(1);
+              }}
+              title="RSI look-back period — shorter reacts faster (RSI(5)/RSI(2) suit 1–2 week swing holds)"
+              className="rounded-lg border border-hairline bg-surface px-2 py-1.5 text-xs font-medium text-ink shadow-sm outline-none focus:border-accent/50 focus:ring-2 focus:ring-accent/25"
+            >
+              {RSI_PERIODS.map((p) => (
+                <option key={p.period} value={p.period}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
           </label>
           {/* Chart interval, TradingView-style day-and-up rows. Sub-daily
               intervals need intraday history, which PSX's free feed doesn't
@@ -174,11 +210,13 @@ export default function StocksView({
           <div className="flex w-fit gap-0.5 rounded-lg bg-surface-2 p-0.5">
             {visibleFilters.map((f) => {
               const hint =
-                f.key === "oversold"
-                  ? `RSI(14) ≤ ${RSI_OVERSOLD} on ${interval.label} candles`
-                  : f.key === "overbought"
-                    ? `RSI(14) ≥ ${RSI_OVERBOUGHT} on ${interval.label} candles`
-                    : undefined;
+                f.key === "signals"
+                  ? `Swing-entry setups: daily RSI(14) ≤ ${BUY_SIGNAL.rsi14Max} and RSI(2) ≤ ${BUY_SIGNAL.rsi2Max}. Exit: RSI(14) back above ~50, +5–8%, or ~10 sessions.`
+                  : f.key === "oversold"
+                    ? `RSI(${period}) ≤ ${thresholds.oversold} on ${interval.label} candles`
+                    : f.key === "overbought"
+                      ? `RSI(${period}) ≥ ${thresholds.overbought} on ${interval.label} candles`
+                      : undefined;
               const active = quickFilter === f.key;
               return (
                 <button
@@ -198,7 +236,7 @@ export default function StocksView({
             })}
           </div>
         </div>
-        <ThresholdLegend />
+        <ThresholdLegend thresholds={thresholds} />
       </div>
 
       {loading ? (
@@ -209,6 +247,8 @@ export default function StocksView({
         <StocksTable
           stocks={pageItems}
           interval={interval}
+          period={period}
+          thresholds={thresholds}
           sortKey={sortKey}
           sortDir={sortDir}
           onSort={handleSort}

@@ -1,6 +1,6 @@
 "use client";
 
-import { RSI_OVERSOLD, RSI_OVERBOUGHT } from "@/lib/rsi";
+import { BUY_SIGNAL } from "@/lib/rsi";
 
 function Stat({ label, value, dot, hint }) {
   return (
@@ -31,12 +31,13 @@ function Stat({ label, value, dot, hint }) {
  * distribution bar below the stats mirrors the RSI axis: oversold (low) on
  * the left, overbought (high) on the right.
  */
-export default function MarketSummary({ stocks, interval }) {
-  const value = (s) => s.rsi?.[interval.key];
+export default function MarketSummary({ stocks, period, interval, thresholds }) {
+  const value = (s) => s.rsi?.[period]?.[interval.key];
   const withRsi = stocks.filter((s) => value(s) !== null && value(s) !== undefined);
-  const overbought = withRsi.filter((s) => value(s) >= RSI_OVERBOUGHT).length;
-  const oversold = withRsi.filter((s) => value(s) <= RSI_OVERSOLD).length;
+  const overbought = withRsi.filter((s) => value(s) >= thresholds.overbought).length;
+  const oversold = withRsi.filter((s) => value(s) <= thresholds.oversold).length;
   const neutral = withRsi.length - overbought - oversold;
+  const signals = stocks.filter((s) => s.buySignal).length;
 
   const denom = oversold + neutral + overbought;
   const segments = [
@@ -52,16 +53,22 @@ export default function MarketSummary({ stocks, interval }) {
       <div className="flex flex-wrap divide-x divide-hairline">
         <Stat label="Tracked" value={stocks.length} />
         <Stat
+          label="Buy signals"
+          value={signals}
+          dot="var(--accent)"
+          hint={`RSI(14) ≤ ${BUY_SIGNAL.rsi14Max} & RSI(2) ≤ ${BUY_SIGNAL.rsi2Max} · daily`}
+        />
+        <Stat
           label="Oversold"
           value={oversold}
           dot="var(--up)"
-          hint={`RSI ≤ ${RSI_OVERSOLD} · ${interval.label}`}
+          hint={`RSI(${period}) ≤ ${thresholds.oversold} · ${interval.label}`}
         />
         <Stat
           label="Overbought"
           value={overbought}
           dot="var(--down)"
-          hint={`RSI ≥ ${RSI_OVERBOUGHT} · ${interval.label}`}
+          hint={`RSI(${period}) ≥ ${thresholds.overbought} · ${interval.label}`}
         />
         <Stat label="Neutral" value={neutral} />
       </div>

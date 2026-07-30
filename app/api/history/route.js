@@ -9,17 +9,18 @@ export async function GET(request) {
     const params = new URL(request.url).searchParams;
     const symbol = params.get("symbol");
     const interval = params.get("interval") || "1D";
+    const period = Number(params.get("period")) || 14;
     if (!symbol) {
       return NextResponse.json({ error: "symbol is required" }, { status: 400 });
     }
-    const history = getRsiHistory(symbol, interval);
+    const history = getRsiHistory(symbol, interval, period);
     if (!history) {
       return NextResponse.json(
-        { error: "Unknown symbol/interval or data not loaded yet" },
+        { error: "Unknown symbol/interval/period or data not loaded yet" },
         { status: 404 }
       );
     }
-    return NextResponse.json({ symbol, interval, history });
+    return NextResponse.json({ symbol, interval, period, history });
   } catch (err) {
     return NextResponse.json(
       { error: err.message || "Failed to load history" },
