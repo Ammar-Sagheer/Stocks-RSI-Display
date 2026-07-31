@@ -1,0 +1,144 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+const IDLE_POLL_MS = 5 * 60 * 1000;
+const LOADING_POLL_MS = 2000;
+
+/**
+ * Fetches /api/stocks and keeps polling — fast while the server-side cache
+ * is still filling, slow once idle. Shared by the dashboard and watchlist
+ * pages so both stay live against the same server cache. `wantAll` starts
+ * the full-universe fetch (the "Load more" phases) when true.
+ *
+ * `watchSymbols` (the current watchlist) rides along on every request so the
+ * server can exempt starred stocks from its volume floor — otherwise a
+ * position the user is tracking could silently vanish if its liquidity
+ * drops, since that filter runs server-side and the watchlist only lives in
+ * this browser's localStorage.
+ */
+export function useStocks(watchSymbols = []) {
+  const [data, setData] = useState({
+    stocks: [],
+    updatedAt: null,
+    loadedCount: 0,
+    totalCount: 0,
+    failedSymbols: 0,
+    scope: "core",
+    hasMore: false,
+    restTotal: 0,
+    usingFallback: false,
+    minVolume: 0,
+    lowVolumeHidden: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // Read by the polling loop (whose closure is fixed on first render), so
+  // clicking "Load more" switches every subsequent poll to the full scope.
+  const wantAllRef = useRef(false);
+  const watchSymbolsRef = useRef(watchSymbols);
+  watchSymbolsRef.current = watchSymbols;
+  const timerRef = useRef(null);
+  const cancelledRef = useRef(false);
+
+  const load = useCallback(async (force = false) => {
+    try {
+      const params = new URLSearchParams();
+      if (wantAllRef.current) params.set("scope", "all");
+      params.set("watch", watchSymbolsRef.current.join(","));
+      // force = the user pressed Refresh: the server re-fetches live prices
+      // from PSX's market-watch page and recomputes RSI before responding.
+      if (force) params.set("refresh", "1");
+      const qs = params.toString();
+      const res = await fetch(`/api/stocks${qs ? `?${qs}` : ""}`);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to load data");
+      setData(json);
+      setError(null);
+      return json;
+    } catch (err) {
+      setError(err.message);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const runPoll = useCallback(async () => {
+    if (cancelledRef.current) return;
+    const result = await load();
+    if (cancelledRef.current) return;
+    const stillFilling =
+      !result || result.totalCount === 0 || result.loadedCount < result.totalCount;
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(runPoll, stillFilling ? LOADING_POLL_MS : IDLE_POLL_MS);
+  }, [load]);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    runPoll();
+    return () => {
+      cancelledRef.current = true;
+      clearTimeout(timerRef.current);
+    };
+  }, [runPoll]);
+
+  const loadMore = useCallback(() => {
+    wantAllRef.current = true;
+    // Hide the button's state immediately client-side; the server confirms on
+    // the next poll. Cancel any pending slow idle poll and resume fast
+    // polling so the rest of the stocks visibly fill in.
+    setData((d) => ({ ...d, hasMore: false }));
+    clearTimeout(timerRef.current);
+    runPoll();
+  }, [runPoll]);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    load(true);
+  }, [load]);
+
+  return { ...data, loading, error, loadMore, refresh };
+}
+
+const WATCHLIST_KEY = "psx-rsi-watchlist";
+
+/**
+ * The user's watchlist, persisted in localStorage (the app has no accounts,
+ * so the list is per-browser). Kept in sync across tabs via the `storage`
+ * event.
+ */
+export function useWatchlist() {
+  const [symbols, setSymbols] = useState([]);
+
+  useEffect(() => {
+    try {
+      setSymbols(JSON.parse(localStorage.getItem(WATCHLIST_KEY) || "[]"));
+    } catch {
+      setSymbols([]);
+    }
+    const onStorage = (e) => {
+      if (e.key !== WATCHLIST_KEY) return;
+      try {
+        setSymbols(JSON.parse(e.newValue || "[]"));
+      } catch {}
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const toggle = useCallback((symbol) => {
+    setSymbols((prev) => {
+      const next = prev.includes(symbol)
+        ? prev.filter((s) => s !== symbol)
+        : [...prev, symbol];
+      try {
+        localStorage.setItem(WATCHLIST_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  return { symbols, toggle };
+}
