@@ -1,0 +1,167 @@
+# Project progress & decisions log
+
+Context for a new agent session (or a human) picking this project up cold.
+Read this before re-deriving anything below from scratch — several of these
+were found by comparing live output against TradingView, not by code
+inspection, and the fix isn't obvious without the story behind it.
+
+For what the app currently does and how it's built, see `README.md` — this
+file is the *history and reasoning*, not the current-state reference.
+
+## The product
+
+A PSX (Pakistan Stock Exchange) dashboard for one specific trading style:
+**buy a stock when it's oversold, sell within 1–2 weeks.** Every feature
+decision traces back to that — e.g. RSI(5)/RSI(2) exist because RSI(14) can
+take months to round-trip 30→70, which doesn't match a 1–2 week hold.
+
+## Chronological build log
+
+1. **Core dashboard.** RSI(14) on daily/weekly/monthly candles for every PSX
+   equity, matching TradingView. Two-phase fetch (KSE-100 first, "Load more"
+   for the rest) to avoid hammering PSX with ~750 requests up front.
+
+2. **Deployment: Vercel → Render, Singapore → Frankfurt.** Vercel's
+   serverless model doesn't fit (in-memory cache needs a long-lived
+   process). Render works, but **PSX blocks Render's Singapore IP range**
+   outright — Frankfurt is the closest region PSX doesn't block. This cost a
+   full round of debugging; don't re-try Singapore.
+
+3. **Live price override.** The EOD feed's latest "close" lags during a live
+   session. Fixed by overriding the last bar's close with the market-watch
+   page's live CURRENT price before computing RSI — this is what makes daily
+   RSI match TradingView's live value instead of yesterday's.
+
+4. **Corporate-action back-adjustment (MTL bug).** MTL had a 1:1 bonus that
+   halved its price overnight; unadjusted, that reads as an artificial -50%
+   crash and poisons RSI for weeks. Fixed with `adjustForCorporateActions()`
+   — detects a large single-day gap and scales all earlier prices by the
+   ratio, same as TradingView's split/bonus-adjusted prices.
+
+5. **PKGS bug: one bad data row poisoning an entire stock's RSI.** PKGS had
+   a single `close: 0` row from a feed glitch. Wilder's RSI smooths
+   recursively over the *entire* history, so one bad point corrupts every
+   value computed afterward into `NaN`; worse, `adjustForCorporateActions`
+   dividing by that zero produced `Infinity`, which then scaled every
+   earlier price to `Infinity` too. Two-layer fix: `fetchEodSeries()` now
+   filters out `close <= 0`/non-finite rows before they enter the pipeline,
+   and `adjustForCorporateActions()` added an explicit `Number.isFinite`
+   guard so a bad value can never poison the scaling factor even if one
+   sneaks through some other way. **Lesson: always sanity-check RSI inputs,
+   never trust a "clean" JSON feed.**
+
+6. **Full UI redesign.** Ad-hoc Tailwind zinc/blue styling replaced with a
+   proper design-token system (`app/globals.css`): warm-neutral surfaces, a
+   three-step ink hierarchy, one accent hue, reserved status colors
+   (green=oversold/bullish, red=overbought/bearish). RSI cells became an
+   ink-colored figure over a micro-meter (0–100 track, threshold ticks, fill
+   position + color both carry the signal — so it survives colorblindness).
+   Market summary became one card with a breadth distribution bar.
+
+7. **RSI period selector added, later made essential.** User's actual
+   strategy is a 1–2 week swing hold; RSI(14) alone doesn't suit that (too
+   slow). Added RSI(14)/RSI(9)/RSI(5)/RSI(2), later trimmed to just
+   **RSI(14)/RSI(5)/RSI(2)**, each with period-appropriate thresholds
+   (30/70, 20/80, 10/90) — see the table in README.md.
+
+8. **Watchlist + TradingView-style interval selector.** Star a stock →
+   localStorage-backed watchlist with its own `/watchlist` page (no
+   accounts, so this is inherently per-browser). The three fixed
+   Daily/Weekly/Monthly RSI columns were replaced by **one RSI(14) column
+   driven by a chart-interval dropdown** (1D/2D/3D, 1W/2W, 1M/3M/6M/12M) —
+   matching TradingView's own interval menu, capped at "1 day" since PSX's
+   free feed has no intraday history for anything shorter. This also
+   shrank the main payload: chart history moved out of `/api/stocks`
+   into an on-demand `/api/history?symbol=&interval=&period=` endpoint.
+
+9. **Period selector restored alongside the interval selector, plus a buy-
+   signal screener.** The user's real ask ("RSI takes 3 months to go 30→70,
+   I want to trade weekly") led to: (a) both dropdowns coexisting (period =
+   *which* RSI, interval = *what candles*), and (b) a **fixed swing-entry
+   rule**, independent of either dropdown: daily RSI(14) ≤ 35 **and** daily
+   RSI(2) ≤ 10 → **BUY** tag. Exit plan (also fixed): daily RSI(14) recrosses
+   ~50, or +5–8%, or ~10 sessions — whichever first. **Important:** this
+   rule is deliberately NOT tied to the period/interval dropdowns — a user
+   report ("I selected RSI(5) but the exit note says RSI(14)") turned out to
+   be a **copy bug, not a logic bug**: the fixed rule was correct, the
+   wording just didn't explain itself. Fixed by making the exit note say
+   explicitly that it's a fixed rule, and by adding a *second*, genuinely
+   dynamic insight line that reads whatever period/interval is currently
+   selected and gives zone-appropriate advice for that live reading.
+   **Lesson: when a fixed rule and a dynamic view coexist in the same UI,
+   both need to say which one they are — a correct fixed rule reads as a
+   bug next to an unlabeled dynamic control.**
+
+10. **MDTL bug: corporate-action detector misreading real rallies as
+    splits.** MDTL's RSI(5) came out as 7.0 vs TradingView's ~51 — not
+    vendor noise, a real bug. MDTL (a thin PSX penny stock) had a genuine
+    +27% single-day rally (a circuit-limit pileup releasing in one
+    session). The corporate-action detector was **symmetric** — it treated
+    any single-day move beyond ±25% as a split/bonus and rescaled history —
+    so it "corrected away" a real rally, turning what should have been a
+    strong RSI reading into a near-zero one. **The fix, and the insight
+    behind it: a bonus/split/rights issue always DILUTES the share count,
+    so it can only ever show up as a price DROP, never a rise.** The
+    detector now only fires on single-day drops beyond -20%; upward moves,
+    however large, are left alone as real trading. Verified against MDTL's
+    live PSX data before shipping (RSI(5): 7.0 → 49.14, TradingView 51.27).
+    **This was a real regression risk for every thin/volatile PSX stock,
+    not just MDTL** — any stock with a genuine sharp rally was previously
+    having that rally erased from its RSI(5)/RSI(2) history.
+
+11. **Live refresh, decoupled from the history crawl.** User wanted "fresh
+    data on every Refresh click" without re-triggering PSX's rate limiter.
+    Insight: PSX's *historical* bars only change once a day; the *only*
+    thing that changes intraday is price, which market-watch already
+    serves in one request. So Refresh now re-fetches just that one page,
+    swaps each stock's last close, and recomputes the RSI grid from cached
+    history — pure CPU, near-instant, no extra PSX load. The 15-minute
+    history-crawl TTL is untouched and separate.
+
+12. **Liquidity floor.** A user question ("what min volume makes a good
+    stock?") turned into a feature: stocks trading under `PSX_MIN_VOLUME`
+    shares/day (default 100,000) are excluded — and since volume is known
+    from market-watch *before* the per-symbol history fetch, thin stocks
+    never get that fetch at all (saves the request, not just hides the
+    result). Two follow-up bugs found and fixed in the same session:
+    - **Tri-state volume, not boolean.** A market-watch row that's *present*
+      with a blank volume cell (confirmed zero trades) must be excluded, but
+      a symbol *missing from the table entirely* needs to be split into two
+      further cases: missing because the market-watch fetch **succeeded but
+      that symbol just isn't in it** (excluded — it's not trading today,
+      same conclusion as a blank cell) vs. missing because the **whole
+      market-watch fetch failed** (an outage — left alone, `undefined`,
+      since unknown liquidity must never be treated as low liquidity, or a
+      transient network blip would empty the entire dashboard). Two rounds
+      of user bug reports ("some stocks still show volume `-`") were needed
+      to find both halves of this distinction — see `lib/cache.js`'s
+      `loadPartition()` for the exact tri-state logic and comments.
+    - **KSE-100 and watchlist exemptions.** The floor should only ever apply
+      to the "rest" of the market, not the KSE-100 constituents, and a
+      stock the user has already starred should never disappear mid-hold
+      just because its volume thinned out. Since the watchlist only lives
+      in browser localStorage, the client now sends it on every
+      `/api/stocks` request (`?watch=SYM1,SYM2`) so the server-side filter
+      can exempt exactly those symbols.
+
+## Standing gotchas (still true — don't rediscover these)
+
+- **This dev sandbox's IP is rate-limited/blocked by PSX** (`503` on
+  `/symbols` under sustained load). This is normal and expected — verify
+  logic offline (small Node scripts against saved/curl'd fixture data, or
+  Playwright screenshots against a mocked `/api/stocks` route) rather than
+  hammering the live endpoint from here. The user's own machine and the
+  Frankfurt Render deployment are not affected by this.
+- **Env var changes require a full process restart** — `lib/cache.js`
+  reads `process.env.*` in top-level `const`s evaluated once at boot.
+  `.env.local` must be in the project root and is never hot-reloaded.
+- **Never trust the PSX feed's numbers at face value** in `lib/rsi.js` /
+  `lib/cache.js` — three separate real bugs (items 5, 9, 10 above) came
+  from taking a "clean-looking" data point at face value. Any new
+  price-derived logic should ask "what if this row is a glitch / a real
+  bonus / a real rally?" before shipping.
+- **The buy-signal rule (item 9) is intentionally fixed**, not
+  parameterized by the period/interval dropdowns. Don't "simplify" it to
+  follow the selected period — that was tried implicitly and confused the
+  user; the dynamic per-row insight line exists specifically to cover the
+  "what does my current view say" need instead.
