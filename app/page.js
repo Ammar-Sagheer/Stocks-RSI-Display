@@ -15,6 +15,8 @@ export default function Home() {
     hasMore,
     restTotal,
     usingFallback,
+    minVolume,
+    lowVolumeHidden,
     loading,
     error,
     loadMore,
@@ -92,9 +94,16 @@ export default function Home() {
         )}
 
         {!stillFilling && failedSymbols > 0 && (
-          <p className="pb-4 text-xs sm:text-sm" style={{ color: "var(--warning)" }}>
+          <p className="pb-1 text-xs sm:text-sm" style={{ color: "var(--warning)" }}>
             {failedSymbols} symbol{failedSymbols === 1 ? "" : "s"} unavailable (PSX feed
             error) — will retry on next refresh
+          </p>
+        )}
+
+        {lowVolumeHidden > 0 && (
+          <p className="pb-4 text-xs text-ink-3 sm:text-sm">
+            {lowVolumeHidden} illiquid stock{lowVolumeHidden === 1 ? "" : "s"} hidden — trading
+            under {minVolume.toLocaleString()} shares today
           </p>
         )}
       </main>

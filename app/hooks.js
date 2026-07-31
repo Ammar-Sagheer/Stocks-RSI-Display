@@ -22,6 +22,8 @@ export function useStocks() {
     hasMore: false,
     restTotal: 0,
     usingFallback: false,
+    minVolume: 0,
+    lowVolumeHidden: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
