@@ -5,6 +5,7 @@ import StocksView from "./components/StocksView";
 import { useStocks, useWatchlist } from "./hooks";
 
 export default function Home() {
+  const { symbols: watchlist, toggle: toggleWatch } = useWatchlist();
   const {
     stocks,
     updatedAt,
@@ -21,8 +22,7 @@ export default function Home() {
     error,
     loadMore,
     refresh,
-  } = useStocks();
-  const { symbols: watchlist, toggle: toggleWatch } = useWatchlist();
+  } = useStocks(watchlist);
 
   const stillFilling = totalCount === 0 || loadedCount < totalCount;
   const fillPercent = totalCount > 0 ? Math.round((loadedCount / totalCount) * 100) : 0;

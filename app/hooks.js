@@ -10,8 +10,14 @@ const LOADING_POLL_MS = 2000;
  * is still filling, slow once idle. Shared by the dashboard and watchlist
  * pages so both stay live against the same server cache. `wantAll` starts
  * the full-universe fetch (the "Load more" phases) when true.
+ *
+ * `watchSymbols` (the current watchlist) rides along on every request so the
+ * server can exempt starred stocks from its volume floor — otherwise a
+ * position the user is tracking could silently vanish if its liquidity
+ * drops, since that filter runs server-side and the watchlist only lives in
+ * this browser's localStorage.
  */
-export function useStocks() {
+export function useStocks(watchSymbols = []) {
   const [data, setData] = useState({
     stocks: [],
     updatedAt: null,
@@ -31,6 +37,8 @@ export function useStocks() {
   // Read by the polling loop (whose closure is fixed on first render), so
   // clicking "Load more" switches every subsequent poll to the full scope.
   const wantAllRef = useRef(false);
+  const watchSymbolsRef = useRef(watchSymbols);
+  watchSymbolsRef.current = watchSymbols;
   const timerRef = useRef(null);
   const cancelledRef = useRef(false);
 
@@ -38,6 +46,7 @@ export function useStocks() {
     try {
       const params = new URLSearchParams();
       if (wantAllRef.current) params.set("scope", "all");
+      params.set("watch", watchSymbolsRef.current.join(","));
       // force = the user pressed Refresh: the server re-fetches live prices
       // from PSX's market-watch page and recomputes RSI before responding.
       if (force) params.set("refresh", "1");

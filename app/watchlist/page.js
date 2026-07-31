@@ -6,8 +6,8 @@ import StocksView from "../components/StocksView";
 import { useStocks, useWatchlist } from "../hooks";
 
 export default function WatchlistPage() {
-  const { stocks, updatedAt, usingFallback, loading, error, refresh } = useStocks();
   const { symbols: watchlist, toggle: toggleWatch } = useWatchlist();
+  const { stocks, updatedAt, usingFallback, loading, error, refresh } = useStocks(watchlist);
 
   const watched = stocks.filter((s) => watchlist.includes(s.symbol));
   // Starred symbols whose data isn't in the current server cache scope (e.g.
